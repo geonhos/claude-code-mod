@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { cellWidth, faceFor, isActive, parseStatus } from './faces'
+import { buildRow, cellWidth, faceFor, isActive, parseStatus } from './faces'
+import type { Segment, Worker } from './faces'
+
+const textOf = (segments: readonly Segment[]): string => segments.map(segment => segment.text).join('')
 
 describe('cellWidth', () => {
   test('counts ASCII as one cell each', () => {
@@ -98,5 +101,55 @@ describe('isActive', () => {
   })
   test('is true when some worker is blocked', () => {
     expect(isActive([{ name: 'a', state: 'blocked' }])).toBe(true)
+  })
+})
+
+describe('buildRow', () => {
+  const TEAM: Worker[] = [
+    { name: 'analyst', state: 'idle' },
+    { name: 'implementer', state: 'working' },
+    { name: 'reviewer', state: 'blocked' },
+  ]
+  // Widest frames: idle 9, working 8, blocked 16 cells.
+  // full names: 8+9 + 2 + 12+8 + 2 + 9+16 = 66; initials: 2+9 + 2 + 2+8 + 2 + 2+16 = 43; none: 9+2+8+2+16 = 37
+
+  test('draws full names when the row fits', () => {
+    expect(textOf(buildRow(TEAM, 0, 80))).toBe('analyst (｡-ω-)zzZ  implementer (ง •̀_•́)ง  reviewer (⊙_⊙)? 도와줘요!')
+    expect(textOf(buildRow(TEAM, 0, 66))).toBe('analyst (｡-ω-)zzZ  implementer (ง •̀_•́)ง  reviewer (⊙_⊙)? 도와줘요!')
+  })
+  test('shortens names to their first letter when one column too narrow', () => {
+    expect(textOf(buildRow(TEAM, 0, 65))).toBe('A (｡-ω-)zzZ  I (ง •̀_•́)ง  R (⊙_⊙)? 도와줘요!')
+    expect(textOf(buildRow(TEAM, 0, 43))).toBe('A (｡-ω-)zzZ  I (ง •̀_•́)ง  R (⊙_⊙)? 도와줘요!')
+  })
+  test('drops names when initials still do not fit', () => {
+    expect(textOf(buildRow(TEAM, 0, 42))).toBe('(｡-ω-)zzZ  (ง •̀_•́)ง  (⊙_⊙)? 도와줘요!')
+    expect(textOf(buildRow(TEAM, 0, 10))).toBe('(｡-ω-)zzZ  (ง •̀_•́)ง  (⊙_⊙)? 도와줘요!')
+  })
+  test('keeps the same layout on every frame (sized by the widest frame)', () => {
+    // "analyst (｡-ω-)zZ" is 16 cells but "analyst (｡-ω-)zzZ" is 17: at 16 columns the name must stay short on every frame.
+    const sleeper: Worker[] = [{ name: 'analyst', state: 'idle' }]
+    const rows = [0, 1, 2, 3, 4, 5, 6, 7].map(frame => textOf(buildRow(sleeper, frame, 16)))
+    expect(rows).toEqual([
+      'A (｡-ω-)zzZ',
+      'A (｡-ω-)zzZ',
+      'A (｡-ω-)zzZ',
+      'A (｡-ω-)zzZ',
+      'A (｡-ω-)zZ',
+      'A (｡-ω-)zZ',
+      'A (｡-ω-)zZ',
+      'A (｡-ω-)zZ',
+    ])
+  })
+  test('colours the faces and leaves names and separators plain', () => {
+    expect(buildRow([{ name: 'reviewer', state: 'blocked' }, { name: 'analyst', state: 'idle' }], 0, 80)).toEqual([
+      { text: 'reviewer ' },
+      { text: '(⊙_⊙)? 도와줘요!', color: '#ff5f87', bold: true },
+      { text: '  ' },
+      { text: 'analyst ' },
+      { text: '(｡-ω-)zzZ', color: 'gray' },
+    ])
+  })
+  test('is empty for no workers', () => {
+    expect(buildRow([], 0, 80)).toEqual([])
   })
 })

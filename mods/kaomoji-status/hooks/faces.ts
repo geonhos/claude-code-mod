@@ -93,3 +93,40 @@ export function faceFor(state: string, frame: number): Face {
 export function isActive(workers: readonly Worker[]): boolean {
   return workers.some(worker => worker.state === 'working' || worker.state === 'blocked')
 }
+
+type Labels = 'full' | 'initial' | 'none'
+
+function labelFor(name: string, labels: Labels): string {
+  if (labels === 'full') return name
+  if (labels === 'initial') return name.slice(0, 1).toUpperCase()
+  return ''
+}
+
+function widestFace(state: string): number {
+  return Math.max(...framesFor(state).map(cellWidth))
+}
+
+function rowWidth(workers: readonly Worker[], labels: Labels): number {
+  let width = 0
+  workers.forEach((worker, index) => {
+    if (index > 0) width += 2
+    const label = labelFor(worker.name, labels)
+    if (label !== '') width += cellWidth(label) + 1
+    width += widestFace(worker.state)
+  })
+  return width
+}
+
+export function buildRow(workers: readonly Worker[], frame: number, columns: number): Segment[] {
+  const labels: Labels =
+    rowWidth(workers, 'full') <= columns ? 'full' : rowWidth(workers, 'initial') <= columns ? 'initial' : 'none'
+  const segments: Segment[] = []
+  workers.forEach((worker, index) => {
+    if (index > 0) segments.push({ text: '  ' })
+    const label = labelFor(worker.name, labels)
+    if (label !== '') segments.push({ text: `${label} ` })
+    const face = faceFor(worker.state, frame)
+    segments.push(face.bold === true ? { text: face.text, color: face.color, bold: true } : { text: face.text, color: face.color })
+  })
+  return segments
+}
