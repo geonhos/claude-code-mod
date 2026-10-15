@@ -1,0 +1,12 @@
+{
+  "name": "claude-code-mod",
+  "description": "Claude Code mods by geonhos: small function-hook plugins for the terminal UI.",
+  "owner": { "name": "geonhos" },
+  "plugins": [
+    {
+      "name": "kaomoji-status",
+      "source": "./mods/kaomoji-status",
+      "description": "Dancing kaomoji above the prompt, one per harness worker."
+    }
+  ]
+}
