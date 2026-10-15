@@ -58,3 +58,34 @@ export function parseStatus(stdout: string): Worker[] {
   }
   return workers
 }
+
+const IDLE_FRAMES = ['(｡-ω-)zzZ', '(｡-ω-)zZ'] as const
+const WORKING_FRAMES = ['(ง •̀_•́)ง', 'ᕕ( ᐛ )ᕗ', '└( ･ω･)┐', '┌(･ω･ )┘'] as const
+const BLOCKED_FRAMES = ['(⊙_⊙)? 도와줘요!', '(⊙_⊙)! 도와줘요!'] as const
+
+const GREY = 'gray'
+const YELLOW = 'yellow'
+const PINK_RED = '#ff5f87'
+
+const isResting = (state: string): boolean => state === 'idle' || state === 'done'
+
+function framesFor(state: string): readonly string[] {
+  if (isResting(state)) return IDLE_FRAMES
+  if (state === 'working') return WORKING_FRAMES
+  if (state === 'blocked') return BLOCKED_FRAMES
+  return [`(・_・) ${state}`]
+}
+
+export function faceFor(state: string, frame: number): Face {
+  const tick = Math.max(0, Math.floor(frame))
+  if (state === 'working') {
+    return { text: WORKING_FRAMES[tick % 4] ?? WORKING_FRAMES[0], color: YELLOW }
+  }
+  if (state === 'blocked') {
+    return { text: BLOCKED_FRAMES[Math.floor(tick / 2) % 2] ?? BLOCKED_FRAMES[0], color: PINK_RED, bold: true }
+  }
+  if (isResting(state)) {
+    return { text: IDLE_FRAMES[Math.floor(tick / 4) % 2] ?? IDLE_FRAMES[0], color: GREY }
+  }
+  return { text: `(・_・) ${state}`, color: GREY }
+}
