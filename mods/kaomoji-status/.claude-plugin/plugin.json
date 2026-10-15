@@ -1,0 +1,15 @@
+{
+  "name": "kaomoji-status",
+  "version": "0.1.0",
+  "description": "Dancing kaomoji above the prompt, one per harness worker: who is working, who is idle, who needs help.",
+  "author": { "name": "geonhos" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "harnessPath": {
+      "type": "string",
+      "title": "harness path",
+      "description": "Absolute path to the harness executable. Leave empty to run `harness` from PATH.",
+      "default": ""
+    }
+  }
+}
