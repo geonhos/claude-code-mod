@@ -126,7 +126,8 @@ export function buildRow(workers: readonly Worker[], frame: number, columns: num
     const label = labelFor(worker.name, labels)
     if (label !== '') segments.push({ text: `${label} ` })
     const face = faceFor(worker.state, frame)
-    segments.push(face.bold === true ? { text: face.text, color: face.color, bold: true } : { text: face.text, color: face.color })
+    const text = face.text + ' '.repeat(Math.max(0, widestFace(worker.state) - cellWidth(face.text)))
+    segments.push(face.bold === true ? { text, color: face.color, bold: true } : { text, color: face.color })
   })
   return segments
 }

@@ -36,6 +36,7 @@ Each item below was checked against `types/claude-code.d.ts`, `reference.md`, or
 9. **Repo setup:** the working directory isn't empty and isn't a git repo, so the plan uses `git init -b main` plus `git remote add` rather than `git clone`.
 10. **`.claude/` is gitignored**, like `.harness/`. Agents write their memory there on every run, which would otherwise dirty the tree. Remove that line if agent memory should be versioned.
 11. **Additions to the spec's manifests:** `plugin.json` gets `author` and `marketplace.json` gets `description`. Without them `claude plugin validate` passes with warnings.
+12. **Faces are padded to the widest frame of their state** (added after Task 6 review). Sizing the layout by the widest frame alone left a worker's face narrower on some ticks (working `ᕕ( ᐛ )ᕗ` is 7 cells vs 8, idle `(｡-ω-)zZ` is 8 vs 9), so every entry after it shifted left one cell and the row jittered. `buildRow` pads each face segment with trailing spaces up to `widestFace(state)`. The two-space separator and the width boundaries are unchanged. The padded segments, not the bare frames, are what tests compare; a working worker on frame 1 therefore ends with one trailing pad space in the Task 7 wiring tests.
 
 ## File structure
 
@@ -648,10 +649,10 @@ describe('buildRow', () => {
       'A (｡-ω-)zzZ',
       'A (｡-ω-)zzZ',
       'A (｡-ω-)zzZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
     ])
   })
   test('colours the faces and leaves names and separators plain', () => {
@@ -665,6 +666,32 @@ describe('buildRow', () => {
   })
   test('is empty for no workers', () => {
     expect(buildRow([], 0, 80)).toEqual([])
+  })
+  test('starts the next worker at the same cell on every frame', () => {
+    const team: Worker[] = [
+      { name: 'implementer', state: 'working' },
+      { name: 'analyst', state: 'idle' },
+      { name: 'reviewer', state: 'blocked' },
+    ]
+    const offsetOf = (segments: readonly Segment[], text: string): number => {
+      const index = segments.findIndex(segment => segment.text === text)
+      return cellWidth(textOf(segments.slice(0, index)))
+    }
+    const frames = [0, 1, 2, 3, 4, 5, 6, 7]
+    const analyst = frames.map(frame => offsetOf(buildRow(team, frame, 80), 'analyst '))
+    const reviewer = frames.map(frame => offsetOf(buildRow(team, frame, 80), 'reviewer '))
+    expect(new Set(analyst).size).toBe(1)
+    expect(new Set(reviewer).size).toBe(1)
+  })
+  test('pads every face to the widest frame of its state', () => {
+    const widest: Record<string, number> = { working: 8, blocked: 16, idle: 9, done: 9, unknown: 15 }
+    for (const state of Object.keys(widest)) {
+      for (const frame of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const segments = buildRow([{ name: 'x', state }], frame, 80)
+        const face = segments[segments.length - 1]
+        expect(cellWidth(face?.text ?? '')).toBe(widest[state])
+      }
+    }
   })
 })
 ```
@@ -710,7 +737,8 @@ export function buildRow(workers: readonly Worker[], frame: number, columns: num
     const label = labelFor(worker.name, labels)
     if (label !== '') segments.push({ text: `${label} ` })
     const face = faceFor(worker.state, frame)
-    segments.push(face.bold === true ? { text: face.text, color: face.color, bold: true } : { text: face.text, color: face.color })
+    const text = face.text + ' '.repeat(Math.max(0, widestFace(worker.state) - cellWidth(face.text)))
+    segments.push(face.bold === true ? { text, color: face.color, bold: true } : { text, color: face.color })
   })
   return segments
 }
@@ -719,7 +747,7 @@ export function buildRow(workers: readonly Worker[], frame: number, columns: num
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `claude plugin test mods/kaomoji-status`
-Expected: PASS: `24 pass`, `0 fail`.
+Expected: PASS: `26 pass`, `0 fail`.
 
 - [ ] **Step 5: Commit**
 
@@ -783,7 +811,7 @@ test('polls harness status every 2.5 s and draws one row of faces', async ($, on
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer (ง •̀_•́)ง')
 
   await clock.advance(250)
-  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ')
+  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ ')
 })
 
 test('runs harnessPath when it is set', { options: { harnessPath: '/opt/bin/harness' } }, async ($, on) => {
@@ -833,7 +861,7 @@ test('stops the frame timer when every worker is idle', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
   await clock.advance(2500)
   await clock.advance(250)
-  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst ᕕ( ᐛ )ᕗ')
+  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst ᕕ( ᐛ )ᕗ ')
 
   stdout = 'analyst idle w1:p1\n'
   await clock.advance(2250)
@@ -902,7 +930,7 @@ test('shortens names to fit bodyColumns', async ($, on) => {
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `claude plugin test mods/kaomoji-status`
-Expected: FAIL. Six tests fail, `25 pass` and `6 fail`:
+Expected: FAIL. Six tests fail, `27 pass` and `6 fail`:
 - `polls harness status every 2.5 s …`
 - `runs harnessPath when it is set`
 - `skips a poll while the previous run is in flight`
@@ -976,7 +1004,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box key="kaomoji-status">
-        <Text wrap="truncate">
+        <Text wrap="truncate-end">
           {segments.map(segment =>
             segment.color === undefined ? (
               segment.text
@@ -996,7 +1024,7 @@ export const register: Register = (on, options) => {
 - [ ] **Step 4: Run them and watch them pass**
 
 Run: `claude plugin test mods/kaomoji-status`
-Expected: PASS: `31 pass`, `0 fail`.
+Expected: PASS: `33 pass`, `0 fail`.
 
 - [ ] **Step 5: Confirm that validate sees the wiring**
 
@@ -1034,7 +1062,7 @@ claude plugin validate mods/kaomoji-status
 claude plugin validate .
 ```
 Expected:
-- tests: `31 pass`, `0 fail`
+- tests: `33 pass`, `0 fail`
 - tsc: `TSC_OK`
 - both validates: `✔ Validation passed`, with no warnings
 

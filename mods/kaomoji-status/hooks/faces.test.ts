@@ -134,10 +134,10 @@ describe('buildRow', () => {
       'A (｡-ω-)zzZ',
       'A (｡-ω-)zzZ',
       'A (｡-ω-)zzZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
-      'A (｡-ω-)zZ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
+      'A (｡-ω-)zZ ',
     ])
   })
   test('colours the faces and leaves names and separators plain', () => {
@@ -151,5 +151,31 @@ describe('buildRow', () => {
   })
   test('is empty for no workers', () => {
     expect(buildRow([], 0, 80)).toEqual([])
+  })
+  test('starts the next worker at the same cell on every frame', () => {
+    const team: Worker[] = [
+      { name: 'implementer', state: 'working' },
+      { name: 'analyst', state: 'idle' },
+      { name: 'reviewer', state: 'blocked' },
+    ]
+    const offsetOf = (segments: readonly Segment[], text: string): number => {
+      const index = segments.findIndex(segment => segment.text === text)
+      return cellWidth(textOf(segments.slice(0, index)))
+    }
+    const frames = [0, 1, 2, 3, 4, 5, 6, 7]
+    const analyst = frames.map(frame => offsetOf(buildRow(team, frame, 80), 'analyst '))
+    const reviewer = frames.map(frame => offsetOf(buildRow(team, frame, 80), 'reviewer '))
+    expect(new Set(analyst).size).toBe(1)
+    expect(new Set(reviewer).size).toBe(1)
+  })
+  test('pads every face to the widest frame of its state', () => {
+    const widest: Record<string, number> = { working: 8, blocked: 16, idle: 9, done: 9, unknown: 15 }
+    for (const state of Object.keys(widest)) {
+      for (const frame of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const segments = buildRow([{ name: 'x', state }], frame, 80)
+        const face = segments[segments.length - 1]
+        expect(cellWidth(face?.text ?? '')).toBe(widest[state])
+      }
+    }
   })
 })
