@@ -45,3 +45,7 @@ npx -y -p typescript@5.6.3 tsc -p mods/kaomoji-status
 bundled skills folder to `mods/<mod>/.claude-plugin/types/claude-code/index.d.ts`.
 
 Add a new mod as `mods/<name>/` and give it one entry in `.claude-plugin/marketplace.json`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

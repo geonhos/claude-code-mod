@@ -41,7 +41,7 @@ Each item below was checked against `types/claude-code.d.ts`, `reference.md`, or
 
 ## File structure
 
-All paths are relative to the repo root, `/Users/geonho.yeom/workspace/claude-mod`.
+All paths are relative to the repo root.
 
 ```
 .gitignore                                   # .harness/, .claude/, mods/*/.claude-plugin/types/, node_modules/, .DS_Store
@@ -72,7 +72,7 @@ Every test command is run from the repo root.
 - [ ] **Step 1: Initialise git on `main` and add the remote**
 
 ```bash
-cd /Users/geonho.yeom/workspace/claude-mod
+cd <repo root>
 git init -b main
 git remote add origin https://github.com/geonhos/claude-code-mod.git
 gh repo view geonhos/claude-code-mod --json isEmpty
@@ -216,7 +216,8 @@ export const register: Register = () => {}
 - [ ] **Step 7: Lay the engine declarations for tsc** (gitignored; repeat after a Claude Code update)
 
 ```bash
-SRC=$(ls -d /private/tmp/claude-*/bundled-skills/*/*/plugin-authoring/types/claude-code.d.ts 2>/dev/null | tail -1)
+# the bundled plugin-authoring skill dir (claude-code.d.ts), under Claude Code's temp bundled-skills folder
+SRC=$(ls -d /tmp/claude-*/bundled-skills/*/*/plugin-authoring/types/claude-code.d.ts 2>/dev/null | tail -1)
 echo "$SRC"
 mkdir -p mods/kaomoji-status/.claude-plugin/types/claude-code
 cp "$SRC" mods/kaomoji-status/.claude-plugin/types/claude-code/index.d.ts
@@ -1160,7 +1161,7 @@ Shows each `harness` (herdr) worker as a kaomoji in one row above the prompt:
 analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ  reviewer (⊙_⊙)? 도와줘요!
 ```
 
-- idle: grey, slowly snoring; working: yellow, dancing; blocked: pink-red, asking for help.
+- idle: grey, slowly snoring (a `done` worker shows the same as idle); working: yellow, dancing; blocked: pink-red, asking for help.
 - Polls `harness status` every 2.5 s. If `harness` is not on Claude Code's PATH, set the absolute path in
   `/config` → kaomoji-status → **harness path**, then restart Claude Code (a config change reloads the mod, and its poll timer starts only at session start).
 - The row hides itself when harness is missing or no worker is live.
