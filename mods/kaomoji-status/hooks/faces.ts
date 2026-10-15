@@ -43,3 +43,18 @@ export function cellWidth(text: string): number {
   }
   return width
 }
+
+const NAME = /^[\w.-]+$/
+const STATE = /^[\w-]+$/
+
+export function parseStatus(stdout: string): Worker[] {
+  const workers: Worker[] = []
+  for (const line of stdout.split('\n')) {
+    const fields = line.trim().split(/\s+/)
+    if (fields.length !== 3) continue
+    const [name = '', state = ''] = fields
+    if (!NAME.test(name) || !STATE.test(state)) continue
+    workers.push({ name, state })
+  }
+  return workers
+}
