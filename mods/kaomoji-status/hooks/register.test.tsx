@@ -33,14 +33,14 @@ test('polls harness status every 2.5 s and draws one row of faces', async ($, on
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
-  expect(await ui.find({ key: 'kaomoji-status' })).toBeUndefined()
-
-  await clock.advance(2500)
   expect(calls).toEqual([['harness', 'status']])
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer (ง •̀_•́)ง')
 
   await clock.advance(250)
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ ')
+
+  await clock.advance(2250)
+  expect(calls).toEqual([['harness', 'status'], ['harness', 'status']])
 })
 
 test('runs harnessPath when it is set', { options: { harnessPath: '/opt/bin/harness' } }, async ($, on) => {
@@ -53,8 +53,9 @@ test('runs harnessPath when it is set', { options: { harnessPath: '/opt/bin/harn
   })
 
   await $.session.start(START)
-  await clock.advance(2500)
   expect(calls).toEqual([['/opt/bin/harness', 'status']])
+  await clock.advance(2500)
+  expect(calls).toEqual([['/opt/bin/harness', 'status'], ['/opt/bin/harness', 'status']])
 })
 
 test('skips a poll while the previous run is in flight', async ($, on) => {
@@ -68,10 +69,11 @@ test('skips a poll while the previous run is in flight', async ($, on) => {
   })
 
   await $.session.start(START)
-  await clock.advance(2500)
   expect(runs).toBe(1)
   await clock.advance(2500)
   expect(runs).toBe(1)
+  await clock.advance(2500)
+  expect(runs).toBe(2)
   await clock.advance(2500)
   expect(runs).toBe(2)
 })
@@ -88,7 +90,6 @@ test('stops the frame timer when every worker is idle', async ($, on) => {
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
-  await clock.advance(2500)
   await clock.advance(250)
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst ᕕ( ᐛ )ᕗ ')
 
@@ -136,21 +137,57 @@ test('hides the row when harness fails, exits non-zero or prints nothing', async
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
+  // the first answer is consumed by the poll at session.start
+  expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
   for (let round = 0; round < 3; round += 1) {
     await clock.advance(2500)
-    expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
-    await clock.advance(2500)
     expect(await ui.find({ key: 'kaomoji-status' })).toBeUndefined()
+    if (round < 2) {
+      await clock.advance(2500)
+      expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
+    }
   }
 })
 
 test('shortens names to fit bodyColumns', async ($, on) => {
-  const clock = mock.clock(on)
+  mock.clock(on)
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('process.run', async () => ok('analyst idle w1:p1\nreviewer blocked w1:p2\n'))
 
   await $.session.start(START)
-  await clock.advance(2500)
   const ui = await $.ui.mount({ ...BAND, props: { ...PROPS, bodyColumns: 31 } })
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('A (｡-ω-)zzZ  R (⊙_⊙)? 도와줘요!')
+})
+
+const flush = async (): Promise<void> => {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+}
+
+test('polls once right at session.start, no clock advance needed', async ($, on) => {
+  mock.clock(on)
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('process.run', async () => ok('analyst working w1:p1\n'))
+  on('ui.render', async ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  await $.session.start(START)
+  await flush()
+  const ui = await $.ui.mount({ ...BAND, props: PROPS })
+  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (ง •̀_•́)ง')
+})
+
+test('runs harness status with a 2000 ms timeout', async ($, on) => {
+  mock.clock(on)
+  const timeouts: Array<number | undefined> = []
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('process.run', async (_$, e) => {
+    timeouts.push(e.init?.timeoutMs)
+    return ok('')
+  })
+
+  await $.session.start(START)
+  await flush()
+  expect(timeouts).toEqual([2000])
 })

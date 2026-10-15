@@ -37,6 +37,7 @@ Each item below was checked against `types/claude-code.d.ts`, `reference.md`, or
 10. **`.claude/` is gitignored**, like `.harness/`. Agents write their memory there on every run, which would otherwise dirty the tree. Remove that line if agent memory should be versioned.
 11. **Additions to the spec's manifests:** `plugin.json` gets `author` and `marketplace.json` gets `description`. Without them `claude plugin validate` passes with warnings.
 12. **Faces are padded to the widest frame of their state** (added after Task 6 review). Sizing the layout by the widest frame alone left a worker's face narrower on some ticks (working `ᕕ( ᐛ )ᕗ` is 7 cells vs 8, idle `(｡-ω-)zZ` is 8 vs 9), so every entry after it shifted left one cell and the row jittered. `buildRow` pads each face segment with trailing spaces up to `widestFace(state)`. The two-space separator and the width boundaries are unchanged. The padded segments, not the bare frames, are what tests compare; a working worker on frame 1 therefore ends with one trailing pad space in the Task 7 wiring tests.
+13. **The first poll runs at `session.start`, and `poll` never rejects** (added after Task 7 review). Waiting 2.5 s for the first poll left the row empty on startup, so `session.start` now calls `poll()` once before arming the 2.5 s timer; the `isPolling` guard still prevents overlap. The state write and the frame-timer reconcile moved inside `poll`'s outer `try`, with a `catch` that swallows a failed write (the next tick retries), and the frame tick's `update` has its own `.catch`, so `void poll()` can't raise an unhandled rejection. Because the first poll lands at t=0, the frame timer starts at t=0 and the wiring tests count frames from there. The `process.run` init is read as `e.init?.timeoutMs`.
 
 ## File structure
 
@@ -804,14 +805,14 @@ test('polls harness status every 2.5 s and draws one row of faces', async ($, on
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
-  expect(await ui.find({ key: 'kaomoji-status' })).toBeUndefined()
-
-  await clock.advance(2500)
   expect(calls).toEqual([['harness', 'status']])
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer (ง •̀_•́)ง')
 
   await clock.advance(250)
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ ')
+
+  await clock.advance(2250)
+  expect(calls).toEqual([['harness', 'status'], ['harness', 'status']])
 })
 
 test('runs harnessPath when it is set', { options: { harnessPath: '/opt/bin/harness' } }, async ($, on) => {
@@ -824,8 +825,9 @@ test('runs harnessPath when it is set', { options: { harnessPath: '/opt/bin/harn
   })
 
   await $.session.start(START)
-  await clock.advance(2500)
   expect(calls).toEqual([['/opt/bin/harness', 'status']])
+  await clock.advance(2500)
+  expect(calls).toEqual([['/opt/bin/harness', 'status'], ['/opt/bin/harness', 'status']])
 })
 
 test('skips a poll while the previous run is in flight', async ($, on) => {
@@ -839,10 +841,11 @@ test('skips a poll while the previous run is in flight', async ($, on) => {
   })
 
   await $.session.start(START)
-  await clock.advance(2500)
   expect(runs).toBe(1)
   await clock.advance(2500)
   expect(runs).toBe(1)
+  await clock.advance(2500)
+  expect(runs).toBe(2)
   await clock.advance(2500)
   expect(runs).toBe(2)
 })
@@ -859,7 +862,6 @@ test('stops the frame timer when every worker is idle', async ($, on) => {
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
-  await clock.advance(2500)
   await clock.advance(250)
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst ᕕ( ᐛ )ᕗ ')
 
@@ -907,36 +909,74 @@ test('hides the row when harness fails, exits non-zero or prints nothing', async
 
   await $.session.start(START)
   const ui = await $.ui.mount({ ...BAND, props: PROPS })
+  // the first answer is consumed by the poll at session.start
+  expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
   for (let round = 0; round < 3; round += 1) {
     await clock.advance(2500)
-    expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
-    await clock.advance(2500)
     expect(await ui.find({ key: 'kaomoji-status' })).toBeUndefined()
+    if (round < 2) {
+      await clock.advance(2500)
+      expect(await ui.find({ key: 'kaomoji-status' })).toBeDefined()
+    }
   }
 })
 
 test('shortens names to fit bodyColumns', async ($, on) => {
-  const clock = mock.clock(on)
+  mock.clock(on)
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('process.run', async () => ok('analyst idle w1:p1\nreviewer blocked w1:p2\n'))
 
   await $.session.start(START)
-  await clock.advance(2500)
   const ui = await $.ui.mount({ ...BAND, props: { ...PROPS, bodyColumns: 31 } })
   expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('A (｡-ω-)zzZ  R (⊙_⊙)? 도와줘요!')
+})
+
+const flush = async (): Promise<void> => {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+}
+
+test('polls once right at session.start, no clock advance needed', async ($, on) => {
+  mock.clock(on)
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('process.run', async () => ok('analyst working w1:p1\n'))
+  on('ui.render', async ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  await $.session.start(START)
+  await flush()
+  const ui = await $.ui.mount({ ...BAND, props: PROPS })
+  expect((await ui.find({ key: 'kaomoji-status' }))?.text).toBe('analyst (ง •̀_•́)ง')
+})
+
+test('runs harness status with a 2000 ms timeout', async ($, on) => {
+  mock.clock(on)
+  const timeouts: Array<number | undefined> = []
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('process.run', async (_$, e) => {
+    timeouts.push(e.init?.timeoutMs)
+    return ok('')
+  })
+
+  await $.session.start(START)
+  await flush()
+  expect(timeouts).toEqual([2000])
 })
 ```
 
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `claude plugin test mods/kaomoji-status`
-Expected: FAIL. Six tests fail, `27 pass` and `6 fail`:
+Expected: FAIL. Eight tests fail, `27 pass` and `8 fail`:
 - `polls harness status every 2.5 s …`
 - `runs harnessPath when it is set`
 - `skips a poll while the previous run is in flight`
 - `stops the frame timer when every worker is idle`
 - `hides the row when harness fails …`
 - `shortens names to fit bodyColumns`
+- `polls once right at session.start, no clock advance needed`
+- `runs harness status with a 2000 ms timeout`
 
 The survey test passes already, because the no-op module always yields.
 
@@ -977,17 +1017,20 @@ export const register: Register = (on, options) => {
         await update($, workers, () => list)
         if (isActive(list)) {
           ticker ??= $.clock.every(FRAME_MS, () => {
-            void update($, frame, n => n + 1)
+            void update($, frame, n => n + 1).catch(() => {})
           })
         } else {
           ticker?.cancel()
           ticker = undefined
         }
+      } catch {
+        // poll never rejects: a failed state write just waits for the next tick
       } finally {
         isPolling = false
       }
     }
 
+    void poll()
     $.clock.every(POLL_MS, () => {
       void poll()
     })
@@ -1024,7 +1067,7 @@ export const register: Register = (on, options) => {
 - [ ] **Step 4: Run them and watch them pass**
 
 Run: `claude plugin test mods/kaomoji-status`
-Expected: PASS: `33 pass`, `0 fail`.
+Expected: PASS: `35 pass`, `0 fail`.
 
 - [ ] **Step 5: Confirm that validate sees the wiring**
 
@@ -1062,7 +1105,7 @@ claude plugin validate mods/kaomoji-status
 claude plugin validate .
 ```
 Expected:
-- tests: `33 pass`, `0 fail`
+- tests: `35 pass`, `0 fail`
 - tsc: `TSC_OK`
 - both validates: `✔ Validation passed`, with no warnings
 

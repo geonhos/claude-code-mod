@@ -32,17 +32,20 @@ export const register: Register = (on, options) => {
         await update($, workers, () => list)
         if (isActive(list)) {
           ticker ??= $.clock.every(FRAME_MS, () => {
-            void update($, frame, n => n + 1)
+            void update($, frame, n => n + 1).catch(() => {})
           })
         } else {
           ticker?.cancel()
           ticker = undefined
         }
+      } catch {
+        // poll never rejects: a failed state write just waits for the next tick
       } finally {
         isPolling = false
       }
     }
 
+    void poll()
     $.clock.every(POLL_MS, () => {
       void poll()
     })
