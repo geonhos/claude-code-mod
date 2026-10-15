@@ -89,3 +89,7 @@ export function faceFor(state: string, frame: number): Face {
   }
   return { text: `(・_・) ${state}`, color: GREY }
 }
+
+export function isActive(workers: readonly Worker[]): boolean {
+  return workers.some(worker => worker.state === 'working' || worker.state === 'blocked')
+}

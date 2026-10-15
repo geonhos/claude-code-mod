@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { cellWidth, faceFor, parseStatus } from './faces'
+import { cellWidth, faceFor, isActive, parseStatus } from './faces'
 
 describe('cellWidth', () => {
   test('counts ASCII as one cell each', () => {
@@ -83,5 +83,20 @@ describe('faceFor', () => {
   test('any other state is a static grey face naming the state', () => {
     expect(faceFor('unknown', 0)).toEqual({ text: '(・_・) unknown', color: 'gray' })
     expect(faceFor('unknown', 5)).toEqual({ text: '(・_・) unknown', color: 'gray' })
+  })
+})
+
+describe('isActive', () => {
+  test('is false for no workers', () => {
+    expect(isActive([])).toBe(false)
+  })
+  test('is false when every worker is idle, done or another state', () => {
+    expect(isActive([{ name: 'a', state: 'idle' }, { name: 'b', state: 'done' }, { name: 'c', state: 'unknown' }])).toBe(false)
+  })
+  test('is true when some worker is working', () => {
+    expect(isActive([{ name: 'a', state: 'idle' }, { name: 'b', state: 'working' }])).toBe(true)
+  })
+  test('is true when some worker is blocked', () => {
+    expect(isActive([{ name: 'a', state: 'blocked' }])).toBe(true)
   })
 })
