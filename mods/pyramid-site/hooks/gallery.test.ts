@@ -21,8 +21,12 @@ describe('statusSegments', () => {
   test('reads as one status row', () => {
     const world = initialWorld({ ...freshProgress(), bricks: 9, completed: [{ wonder: 'Pyramid', date: 'd' }] })
     const row = statusSegments({ ...world, workers: { analyst: 'working', implementer: 'idle', reviewer: 'blocked' } })
-    expect(textOf(row)).toBe('👑 boss  ■ analyst working  ■ implementer idle  ■ reviewer ? blocked  🧱 9/28 Pyramid · 완공 1')
-    expect(row.find(s => s.text === '■ analyst')?.color).toBe('#3b6ea5')
+    expect(textOf(row)).toBe('👑 boss  analyst working  implementer idle  reviewer ? blocked  🧱 9/28 Pyramid | 완공 1')
+    expect(row.find(s => s.text === 'analyst')?.color).toBe('#3b6ea5')
     expect(row.find(s => s.text === ' ? blocked')?.color).toBe('#e04848')
+  })
+  test('uses no East Asian ambiguous-width glyphs', () => {
+    const row = statusSegments(initialWorld(freshProgress()))
+    expect(textOf(row)).not.toMatch(/[■·●○★☆▲△▼▽◆◇]/)
   })
 })

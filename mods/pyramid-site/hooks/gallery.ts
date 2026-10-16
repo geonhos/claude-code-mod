@@ -25,8 +25,8 @@ const STATE_TEXT: Readonly<Record<PyramidWorkerState, Segment>> = {
 export function statusSegments(world: PyramidWorld): Segment[] {
   const segments: Segment[] = [{ text: '👑 boss' }]
   for (const name of WORKER_NAMES) {
-    segments.push({ text: '  ' }, { text: `■ ${name}`, color: toHexColor(WORKER_SHIRT[name].C!) }, STATE_TEXT[world.workers[name]])
+    segments.push({ text: '  ' }, { text: name, color: toHexColor(WORKER_SHIRT[name].C!) }, STATE_TEXT[world.workers[name]])
   }
-  segments.push({ text: `  ${progressLine(world.progress)} · 완공 ${world.progress.completed.length}` })
+  segments.push({ text: `  ${progressLine(world.progress)} | 완공 ${world.progress.completed.length}` })
   return segments
 }

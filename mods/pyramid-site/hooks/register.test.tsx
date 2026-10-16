@@ -134,7 +134,7 @@ test('the pane is a 72×18 Raster with a status row', async ($, on) => {
   expect(raster?.props.columns).toBe(72)
   expect(raster?.props.rows).toBe(18)
   expect(decodeCells(String(raster?.props.cells))).toHaveLength(72 * 18 * 3)
-  expect(await statusText(ui)).toContain('🧱 0/28 Pyramid · 완공 0')
+  expect(await statusText(ui)).toContain('🧱 0/28 Pyramid | 완공 0')
 })
 
 test('a narrow, short pane crops the scene', async ($, on) => {
@@ -180,8 +180,8 @@ test('the status poll reconciles worker states', async ($, on) => {
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   r.setStatus('analyst      working  w1:p1\nimplementer  idle     w1:p2\nreviewer     blocked  w1:p3\n')
   await r.clock.advance(2500)
-  expect(await statusText(ui)).toContain('■ analyst working')
-  expect(await statusText(ui)).toContain('■ reviewer ? blocked')
+  expect(await statusText(ui)).toContain('analyst working')
+  expect(await statusText(ui)).toContain('reviewer ? blocked')
   expect(r.polls[0]).toEqual(['harness', 'status'])
 })
 
@@ -192,7 +192,7 @@ test('harness ask sets the worker working, its report lays a brick', async ($, o
   r.files.set(ANALYST_FILE, REPORT)
   r.answers.push(printed('screen text'))
   await $.tool.call(bash("harness ask analyst 'Read .harness/task-analyst.md and do it.'"))
-  expect(await statusText(ui)).toContain('■ analyst idle')
+  expect(await statusText(ui)).toContain('analyst idle')
   expect(await statusText(ui)).toContain('🧱 1/28 Pyramid')
   expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
 })
@@ -203,9 +203,9 @@ test('exit 2 shows the worker blocked, exit 4 waiting', async ($, on) => {
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   r.answers.push(exited(2), exited(4))
   await $.tool.call(bash('harness ask reviewer go'))
-  expect(await statusText(ui)).toContain('■ reviewer ? blocked')
+  expect(await statusText(ui)).toContain('reviewer ? blocked')
   await $.tool.call(bash('harness ask implementer go'))
-  expect(await statusText(ui)).toContain('■ implementer waiting')
+  expect(await statusText(ui)).toContain('implementer waiting')
 })
 
 test('reviewer findings crack bricks and the implementer repairs them', async ($, on) => {
@@ -278,7 +278,7 @@ test('a day on site: reports finish the pyramid and the gallery records it', asy
   r.files.set(IMPLEMENTER_FILE, '# implementer report — c\nstatus: done\n')
   await $.tool.call(bash("harness ask implementer 'fix'"))
   expect(r.store.get('progress')).toMatchObject({ wonderIndex: 1, bricks: 0, cracked: [], completed: [{ wonder: 'Pyramid', date: '2026-10-16' }] })
-  expect(await statusText(ui)).toContain('🧱 0/22 Obelisk · 완공 1')
+  expect(await statusText(ui)).toContain('🧱 0/22 Obelisk | 완공 1')
 
   await $.tool.call(bash('harness report implementer'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 0 })
