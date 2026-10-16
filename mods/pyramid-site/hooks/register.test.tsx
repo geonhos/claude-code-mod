@@ -275,3 +275,12 @@ test('a day on site: reports finish the pyramid and the gallery records it', asy
   await r.clock.advance(83 * 40)
   expect((await $.command.run(command('gallery'))).text).toBe('🧱 0/22 Obelisk\nCompleted wonders:\n- Pyramid — 2026-10-16')
 })
+
+test('a reload without session.start still sets the site up', async ($, on) => {
+  const r = rig(on)
+  expect((await $.command.run(command(''))).text).toBe('Pyramid site opened.')
+  expect(r.registered).toEqual(['pyramid'])
+  r.answers.push(printed(REPORT))
+  await $.tool.call(bash("harness ask analyst 'go'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
