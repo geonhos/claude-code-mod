@@ -227,4 +227,39 @@ export const register: Register = (on, options) => {
     }
     return result
   })
+
+  on('command.run', { command: 'pyramid' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    const current = await read($, world)
+    if (arg === 'gallery') return { text: formatGallery(current.progress) }
+    if (arg !== '') return { text: 'Usage: /pyramid [gallery]' }
+    if (site === undefined) return { text: 'The pyramid site only runs in the conductor session.' }
+    if (current.progress.paneWanted) {
+      await site.setPaneWanted(false)
+      view = undefined
+      stopLoop()
+      try {
+        await $.ui.close({ id: PANE })
+      } catch {
+        // already closed
+      }
+      return { text: 'Pyramid site closed.' }
+    }
+    await site.setPaneWanted(true)
+    const isPlaced = await site.openPane()
+    return { text: isPlaced ? 'Pyramid site opened.' : 'Pyramid site opens as soon as the terminal has room.' }
+  })
+  on('ui.close', { id: PANE }, async (_$, e, next) => {
+    const result = await next(e)
+    view = undefined
+    stopLoop()
+    if (e.origin.kind === 'person' && site !== undefined) {
+      try {
+        await site.setPaneWanted(false)
+      } catch {
+        // the next /pyramid fixes paneWanted
+      }
+    }
+    return result
+  })
 }

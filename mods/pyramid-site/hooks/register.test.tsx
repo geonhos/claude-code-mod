@@ -226,3 +226,25 @@ test('a prompt sends the caravan across the scene', async ($, on) => {
   const sawCamel = r.blits.some(cells => decodeCells(cells).some((word, i) => i % 3 !== 0 && camel.has(word)))
   expect(sawCamel).toBe(true)
 })
+
+test('/pyramid toggles the pane and remembers it', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  expect((await $.command.run(command(''))).text).toBe('Pyramid site opened.')
+  expect(r.opened).toEqual(['pyramid'])
+  expect(r.store.get('progress')).toMatchObject({ paneWanted: true })
+  expect((await $.command.run(command(''))).text).toBe('Pyramid site closed.')
+  expect(r.store.get('progress')).toMatchObject({ paneWanted: false })
+})
+
+test('/pyramid gallery lists finished wonders', async ($, on) => {
+  rig(on, {
+    store: {
+      progress: {
+        v: 1, wonderIndex: 1, bricks: 3, cracked: [], completed: [{ wonder: 'Pyramid', date: '2026-10-16' }], seenReports: [], paneWanted: false,
+      },
+    },
+  })
+  await $.session.start(START)
+  expect((await $.command.run(command('gallery'))).text).toBe('🧱 3/22 Obelisk\nCompleted wonders:\n- Pyramid — 2026-10-16')
+})
