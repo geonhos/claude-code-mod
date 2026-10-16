@@ -20,7 +20,7 @@ export const RASTER_KEY = 'scene'
 export const FRAME_MS = 83
 export const IDLE_MS = 500
 export const POLL_MS = 2500
-const RUN_TIMEOUT_MS = 2000
+const RUN_TIMEOUT_MS = 5000
 
 const world = atom({ plugin: 'pyramid-site', key: 'world' } as const, initialWorld(freshProgress()))
 
@@ -28,6 +28,8 @@ type Site = {
   emit: (event: DomainEvent) => Promise<void>
   setPaneWanted: (paneWanted: boolean) => Promise<void>
   openPane: () => Promise<boolean>
+  startPoll: () => void
+  stopPoll: () => void
   ensureLoop: () => Promise<void>
 }
 
@@ -41,6 +43,7 @@ type Runtime = {
   view: View | undefined
   loop: Timer | undefined
   loopMs: number
+  pollTimer: Timer | undefined
   lastCells: string
   isWorker: boolean
   booting: Promise<void> | undefined
@@ -125,9 +128,39 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
     }
   }
 
+
+  const poll = async (): Promise<void> => {
+    if (isPolling) return
+    isPolling = true
+    try {
+      const ran = await $.process.run([rt.harness, 'status'], { timeoutMs: RUN_TIMEOUT_MS })
+      if (ran.exitCode === 0) await emit({ kind: 'status', polled: parseStatus(ran.stdout) })
+    } catch {
+      // harness missing or slow: keep the last known states
+    } finally {
+      isPolling = false
+    }
+  }
+
+  // The poll runs only while the pane is open or wanted.
+  const startPoll = (): void => {
+    if (rt.pollTimer !== undefined) return
+    void poll()
+    rt.pollTimer = $.clock.every(POLL_MS, () => {
+      void poll()
+    })
+  }
+
+  const stopPoll = (): void => {
+    rt.pollTimer?.cancel()
+    rt.pollTimer = undefined
+  }
+
   const setPaneWanted = async (paneWanted: boolean): Promise<void> => {
     const after = await update($, world, current => ({ ...current, progress: { ...current.progress, paneWanted } }))
     await $.store.set(PROGRESS_KEY, after.progress)
+    if (paneWanted) startPoll()
+    else stopPoll()
   }
 
   const openPane = async (): Promise<boolean> => {
@@ -139,7 +172,7 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
     }
   }
 
-  rt.site = { emit, setPaneWanted, openPane, ensureLoop }
+  rt.site = { emit, setPaneWanted, openPane, startPoll, stopPoll, ensureLoop }
 
   try {
     const progress = parseProgress(await $.store.get(PROGRESS_KEY))
@@ -158,25 +191,11 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
     // the pane still opens from paneWanted
   }
 
-  const poll = async (): Promise<void> => {
-    if (isPolling) return
-    isPolling = true
-    try {
-      const ran = await $.process.run([rt.harness, 'status'], { timeoutMs: RUN_TIMEOUT_MS })
-      if (ran.exitCode === 0) await emit({ kind: 'status', polled: parseStatus(ran.stdout) })
-    } catch {
-      // harness missing or slow: keep the last known states
-    } finally {
-      isPolling = false
-    }
-  }
-  void poll()
-  $.clock.every(POLL_MS, () => {
-    void poll()
-  })
-
   try {
-    if ((await read($, world)).progress.paneWanted) await openPane()
+    if ((await read($, world)).progress.paneWanted) {
+      startPoll()
+      await openPane()
+    }
   } catch {
     // the person can open it with /pyramid
   }
@@ -200,6 +219,7 @@ export const register: Register = (on, options) => {
     view: undefined,
     loop: undefined,
     loopMs: 0,
+    pollTimer: undefined,
     lastCells: '',
     isWorker: false,
     booting: undefined,
@@ -234,6 +254,7 @@ export const register: Register = (on, options) => {
     const cells = toCells(drawScene(current, rt.anim), rt.mode, nextView)
     rt.view = nextView
     rt.lastCells = cells
+    rt.site.startPoll()
     void rt.site.ensureLoop()
     return (
       <Box key="pyramid-site" flexDirection="column">
@@ -281,6 +302,7 @@ export const register: Register = (on, options) => {
       await rt.site.setPaneWanted(false)
       rt.view = undefined
       stopLoop(rt)
+      rt.site.stopPoll()
       try {
         await $.ui.close({ id: PANE })
       } catch {
@@ -296,6 +318,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     rt.view = undefined
     stopLoop(rt)
+    rt.site?.stopPoll()
     if (e.origin.kind === 'person' && rt.site !== undefined) {
       try {
         await rt.site.setPaneWanted(false)

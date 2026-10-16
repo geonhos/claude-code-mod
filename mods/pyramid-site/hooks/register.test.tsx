@@ -109,8 +109,8 @@ test('session start reopens the pane the person left open', async ($, on) => {
   expect(r.opened).toEqual(['pyramid'])
 })
 
-test('polls harness status at start and every 2.5 s', async ($, on) => {
-  const r = rig(on)
+test('polls harness status at start and every 2.5 s while the pane is wanted', async ($, on) => {
+  const r = rig(on, { store: { progress: { v: 1, wonderIndex: 0, bricks: 0, cracked: [], completed: [], seenReports: [], paneWanted: true } } })
   await $.session.start(START)
   await r.clock.advance(0)
   expect(r.polls).toEqual([['harness', 'status']])
@@ -119,7 +119,7 @@ test('polls harness status at start and every 2.5 s', async ($, on) => {
 })
 
 test('harnessPath is the command the poll runs', { options: { harnessPath: '/opt/bin/harness' } }, async ($, on) => {
-  const r = rig(on)
+  const r = rig(on, { store: { progress: { v: 1, wonderIndex: 0, bricks: 0, cracked: [], completed: [], seenReports: [], paneWanted: true } } })
   await $.session.start(START)
   await r.clock.advance(0)
   expect(r.polls[0]).toEqual(['/opt/bin/harness', 'status'])
@@ -353,4 +353,23 @@ test('a harness call made by a subagent does not drive the scene', async ($, on)
   await $.tool.call({ ...bash("harness ask analyst 'go'"), agentId: 'sub-1' } as Args<'tool.call'>)
   expect(r.store.get('progress')).toBeUndefined()
   expect(await statusText(ui)).toContain('analyst idle')
+})
+
+test('nothing polls while the pane is closed and not wanted', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await r.clock.advance(20000)
+  expect(r.polls).toEqual([])
+})
+
+test('/pyramid starts the poll and closing it stops the poll', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await $.command.run(command(''))
+  await r.clock.advance(5000)
+  const whileOpen = r.polls.length
+  expect(whileOpen).toBeGreaterThanOrEqual(2)
+  await $.command.run(command(''))
+  await r.clock.advance(10000)
+  expect(r.polls.length).toBe(whileOpen)
 })
