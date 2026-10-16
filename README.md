@@ -7,6 +7,7 @@ Mods for [Claude Code](https://claude.com/claude-code): function-hook plugins, o
 | mod | what it does |
 |-----|--------------|
 | [kaomoji-status](mods/kaomoji-status) | One row of dancing kaomoji above the prompt, one per harness worker. |
+| [pyramid-site](mods/pyramid-site) | An animated pixel-art pyramid site in a side pane: the conductor cracks the whip, workers carry bricks. |
 
 ## Install
 
@@ -14,6 +15,10 @@ Type at the prompt of a terminal Claude Code session:
 
 ```
 /plugin install kaomoji-status --marketplace geonhos/claude-code-mod
+```
+
+```
+/plugin install pyramid-site --marketplace geonhos/claude-code-mod
 ```
 
 Answer `y` to add the marketplace, then pick a scope (user scope is first; press Enter).
@@ -31,6 +36,25 @@ analyst (｡-ω-)zzZ  implementer ᕕ( ᐛ )ᕗ  reviewer (⊙_⊙)? 도와줘�
   `/config` → kaomoji-status → **harness path**, then restart Claude Code (a config change reloads the mod, and its poll timer starts only at session start).
 - The row hides itself when harness is missing or no worker is live.
 
+### pyramid-site
+
+A construction site in a side pane, drawn as half-block pixel art (72×18 cells):
+
+- The overseer (the conductor) cracks a whip on every `harness ask <worker>`; that worker starts carrying bricks.
+- Every worker report lays one brick. A reviewer report with findings cracks up to three recent bricks; the next
+  implementer report repairs them. A clean review flashes the building gold.
+- Blocked workers (exit 2) drop their brick under a red `?`; exit 4 makes them wait.
+- Every prompt you type sends a camel caravan with a scroll for the overseer.
+- Wonders: Pyramid (28) → Obelisk (22) → Sphinx (28) → Great Pyramid (45), kept across sessions.
+
+Commands: `/pyramid` toggles the pane (it reopens next session if you left it open); `/pyramid gallery` lists finished
+wonders with dates. Only the conductor session draws (`HARNESS_ROLE=worker` sessions stay quiet).
+
+Settings in `/config` → pyramid-site: **harness path** (as kaomoji-status) and **pixel mode**: `half` (default, `▀`
+glyphs) or `space` (coloured spaces) for terminals that draw block glyphs double width, e.g. iTerm2 or Terminal.app
+with "ambiguous characters are double-width" turned on. Restart Claude Code after a change: the poll and the
+animation start at session start.
+
 ## Local development
 
 ```bash
@@ -38,6 +62,7 @@ claude --plugin-dir mods/kaomoji-status        # hot-reloads on save
 claude plugin test mods/kaomoji-status         # unit + wiring tests
 claude plugin validate mods/kaomoji-status     # manifest, hooks, state contract
 npx -y -p typescript@5.6.3 tsc -p mods/kaomoji-status
+claude plugin test mods/pyramid-site && claude plugin validate mods/pyramid-site
 ```
 
 `tsc` needs the engine declarations in `mods/<mod>/.claude-plugin/types/` (gitignored). An interactive
