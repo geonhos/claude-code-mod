@@ -30,6 +30,7 @@ type Rig = {
   registered: string[]
   polls: string[][]
   answers: ToolCallResult[]
+  files: Map<string, string>
   store: Map<string, unknown>
   setStatus: (stdout: string) => void
   denyBlits: () => void
@@ -51,6 +52,7 @@ function rig(on: On, { env = {}, store = {}, now = 0 }: RigOptions = {}): Rig {
   const registered: string[] = []
   const polls: string[][] = []
   const answers: ToolCallResult[] = []
+  const files = new Map<string, string>()
   let status = ''
   let isBlitDenied = false
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
@@ -72,14 +74,23 @@ function rig(on: On, { env = {}, store = {}, now = 0 }: RigOptions = {}): Rig {
     if ('cells' in e) blits.push(e.cells)
     return { value: {} }
   })
+  on('fs.read', async (_$, e) => {
+    // the engine resolves the relative path against the session cwd before the hook sees it
+    const key = [...files.keys()].find(name => e.path === name || e.path.endsWith(`/${name}`))
+    return key === undefined ? { deny: 'ENOENT' } : { value: files.get(key)! }
+  })
   on('tool.call', async () => answers.shift() ?? printed(''))
   on('prompt.submit', async (_$, e) => ({ text: e.text }))
   return {
-    clock, blits, opened, registered, polls, answers, store: saved,
+    clock, blits, opened, registered, polls, answers, files, store: saved,
     setStatus: stdout => { status = stdout },
     denyBlits: () => { isBlitDenied = true },
   }
 }
+
+const ANALYST_FILE = '.harness/reports/analyst.md'
+const REVIEWER_FILE = '.harness/reports/reviewer.md'
+const IMPLEMENTER_FILE = '.harness/reports/implementer.md'
 
 const statusText = async (ui: { find: (q: { key: string }) => Promise<{ text: string } | undefined> }): Promise<string> =>
   (await ui.find({ key: 'pyramid-site' }))?.text ?? ''
@@ -178,7 +189,8 @@ test('harness ask sets the worker working, its report lays a brick', async ($, o
   const r = rig(on)
   await $.session.start(START)
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
-  r.answers.push(printed(REPORT))
+  r.files.set(ANALYST_FILE, REPORT)
+  r.answers.push(printed('screen text'))
   await $.tool.call(bash("harness ask analyst 'Read .harness/task-analyst.md and do it.'"))
   expect(await statusText(ui)).toContain('■ analyst idle')
   expect(await statusText(ui)).toContain('🧱 1/28 Pyramid')
@@ -199,10 +211,10 @@ test('exit 2 shows the worker blocked, exit 4 waiting', async ($, on) => {
 test('reviewer findings crack bricks and the implementer repairs them', async ($, on) => {
   const r = rig(on, { store: { progress: { v: 1, wonderIndex: 0, bricks: 5, cracked: [], completed: [], seenReports: [], paneWanted: false } } })
   await $.session.start(START)
-  r.answers.push(printed('# reviewer report\nstatus: done\n## Findings / Decisions\n- [Major] a\n- [Minor] b\n## Verification\n'))
+  r.files.set(REVIEWER_FILE, '# reviewer report\nstatus: done\n## Findings / Decisions\n- [Major] a\n- [Minor] b\n## Verification\n')
   await $.tool.call(bash('harness report reviewer'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 6, cracked: [3, 4] })
-  r.answers.push(printed('# implementer report\nstatus: done\n'))
+  r.files.set(IMPLEMENTER_FILE, '# implementer report\nstatus: done\n')
   await $.tool.call(bash("harness ask implementer 'fix'"))
   expect(r.store.get('progress')).toMatchObject({ bricks: 7, cracked: [] })
 })
@@ -257,18 +269,17 @@ test('a day on site: reports finish the pyramid and the gallery records it', asy
   await $.session.start(START)
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
 
-  r.answers.push(printed('# analyst report — a\nstatus: done\n'))
+  r.files.set(ANALYST_FILE, '# analyst report — a\nstatus: done\n')
   await $.tool.call(bash("harness ask analyst 'look'"))
-  r.answers.push(printed('# reviewer report — b\nstatus: done\n## Findings / Decisions\n- [Minor] x.ts:1 — nit\n## Verification\n'))
+  r.files.set(REVIEWER_FILE, '# reviewer report — b\nstatus: done\n## Findings / Decisions\n- [Minor] x.ts:1 — nit\n## Verification\n')
   await $.tool.call(bash("harness ask reviewer 'review'"))
   expect(r.store.get('progress')).toMatchObject({ bricks: 27, cracked: [25] })
 
-  r.answers.push(printed('# implementer report — c\nstatus: done\n'))
+  r.files.set(IMPLEMENTER_FILE, '# implementer report — c\nstatus: done\n')
   await $.tool.call(bash("harness ask implementer 'fix'"))
   expect(r.store.get('progress')).toMatchObject({ wonderIndex: 1, bricks: 0, cracked: [], completed: [{ wonder: 'Pyramid', date: '2026-10-16' }] })
   expect(await statusText(ui)).toContain('🧱 0/22 Obelisk · 완공 1')
 
-  r.answers.push(printed('# implementer report — c\nstatus: done\n'))
   await $.tool.call(bash('harness report implementer'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 0 })
 
@@ -280,7 +291,56 @@ test('a reload without session.start still sets the site up', async ($, on) => {
   const r = rig(on)
   expect((await $.command.run(command(''))).text).toBe('Pyramid site opened.')
   expect(r.registered).toEqual(['pyramid'])
-  r.answers.push(printed(REPORT))
+  r.files.set(ANALYST_FILE, REPORT)
   await $.tool.call(bash("harness ask analyst 'go'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('a piped ask never lays a brick from screen text', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.answers.push(printed('╭ screen of the pane ╮'), printed('╭ screen again ╮'), exited(2))
+  await $.tool.call(bash("harness ask reviewer 'x' 2>&1 | tail -n 40"))
+  await $.tool.call(bash("harness ask reviewer 'x' || true"))
+  expect(r.store.get('progress')).toBeUndefined()
+  await $.tool.call(bash("harness ask reviewer 'x' | cat"))
+  expect(await statusText(ui)).toContain('reviewer working')
+})
+
+test('a piped ask lays a brick once the report file is there', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.files.set(REVIEWER_FILE, '# reviewer report\nstatus: done\n## Findings / Decisions\n- no findings\n')
+  r.answers.push(printed('truncated tail'))
+  await $.tool.call(bash("harness ask reviewer 'x' | tail -n 5"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('a quoted mention of harness is not a call', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.files.set(REVIEWER_FILE, REPORT)
+  r.answers.push(printed('[main abc] harness ask reviewer'))
+  await $.tool.call(bash('git commit -m "harness ask reviewer"'))
+  expect(await statusText(ui)).toContain('reviewer idle')
+  expect(r.store.get('progress')).toBeUndefined()
+})
+
+test('a path-prefixed harness call counts', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.files.set(ANALYST_FILE, REPORT)
+  await $.tool.call(bash("/opt/bin/harness ask analyst 'go'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('harness report replaying the same file lays no second brick', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.files.set(ANALYST_FILE, REPORT)
+  await $.tool.call(bash("harness ask analyst 'go'"))
+  await $.tool.call(bash('harness report analyst'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
 })

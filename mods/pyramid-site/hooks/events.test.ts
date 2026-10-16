@@ -1,7 +1,7 @@
 import type { ToolCallResult } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
-import { exitCodeOf, interpretResult, parseHarnessCall } from './events'
+import { exitCodeOf, interpretResult, parseHarnessCall, parseHarnessInvocation } from './events'
 
 const ok = (stdout: string): ToolCallResult => ({ result: { stdout, stderr: '', interrupted: false }, text: stdout })
 const failed = (code: number, rest = 'harness: x'): ToolCallResult => ({ isError: true, result: `Exit code ${code}\n${rest}`, text: `Exit code ${code}\n${rest}` })
@@ -35,29 +35,64 @@ describe('exitCodeOf', () => {
   })
 })
 
-describe('interpretResult', () => {
-  test('a printed report becomes a report event', () => {
-    expect(interpretResult(ASK, ok('# analyst report\nstatus: done\n'))).toEqual({
-      kind: 'report', worker: 'analyst', text: '# analyst report\nstatus: done\n',
-    })
-    expect(interpretResult(REPORT, ok('# reviewer report\n'))).toEqual({ kind: 'report', worker: 'reviewer', text: '# reviewer report\n' })
+describe('parseHarnessInvocation', () => {
+  test('a lone call is the whole command, anything around it is not', () => {
+    expect(parseHarnessInvocation('harness ask analyst go')).toEqual({ ...ASK, isWhole: true })
+    expect(parseHarnessInvocation("harness ask analyst go 2>&1")).toEqual({ ...ASK, isWhole: true })
+    expect(parseHarnessInvocation('harness ask analyst go | tail -n 40')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('harness ask analyst go || true')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('cd /repo && harness ask analyst go')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('harness ask analyst go; echo $?')).toEqual({ ...ASK, isWhole: false })
   })
-  test('ask exit codes map to blocked, waiting and idle', () => {
-    expect(interpretResult(ASK, failed(2))).toEqual({ kind: 'blocked', worker: 'analyst' })
-    expect(interpretResult(ASK, failed(4))).toEqual({ kind: 'waiting', worker: 'analyst' })
-    expect(interpretResult(ASK, failed(3))).toEqual({ kind: 'idle', worker: 'analyst' })
-    expect(interpretResult(ASK, failed(1))).toEqual({ kind: 'idle', worker: 'analyst' })
+  test('accepts a path prefix', () => {
+    expect(parseHarnessCall('/opt/bin/harness ask reviewer x')).toEqual({ verb: 'ask', worker: 'reviewer' })
+    expect(parseHarnessCall('~/.local/bin/harness report analyst')).toEqual({ verb: 'report', worker: 'analyst' })
+    expect(parseHarnessCall('$HOME/bin/harness ask implementer x')).toEqual({ verb: 'ask', worker: 'implementer' })
+  })
+  test('never matches text inside quotes or a non-harness program', () => {
+    expect(parseHarnessCall('git commit -m "harness ask reviewer"')).toBeUndefined()
+    expect(parseHarnessCall("echo 'x; harness ask reviewer'")).toBeUndefined()
+    expect(parseHarnessCall('echo harness ask reviewer')).toBeUndefined()
+    expect(parseHarnessCall('grep harness ask reviewer file')).toBeUndefined()
+  })
+})
+
+describe('interpretResult', () => {
+  const WHOLE_ASK = { ...ASK, isWhole: true } as const
+  const PIPED_ASK = { ...ASK, isWhole: false } as const
+  const WHOLE_REPORT = { ...REPORT, isWhole: true } as const
+  const FILE = '# analyst report\nstatus: done\n'
+
+  test('a fresh report file becomes a report event, whatever stdout says', () => {
+    expect(interpretResult(WHOLE_ASK, ok('screen text'), FILE)).toEqual({ kind: 'report', worker: 'analyst', text: FILE })
+    expect(interpretResult(PIPED_ASK, ok('screen text'), FILE)).toEqual({ kind: 'report', worker: 'analyst', text: FILE })
+    expect(interpretResult(WHOLE_REPORT, ok('x'), FILE)).toEqual({ kind: 'report', worker: 'reviewer', text: FILE })
+  })
+  test('stdout alone never lays a brick', () => {
+    expect(interpretResult(PIPED_ASK, ok('# analyst report\nstatus: done\n'), undefined)).toBeUndefined()
+    expect(interpretResult(WHOLE_ASK, ok('# analyst report\nstatus: done\n'), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+  })
+  test('ask exit codes are trusted only for a whole command', () => {
+    expect(interpretResult(WHOLE_ASK, failed(2), undefined)).toEqual({ kind: 'blocked', worker: 'analyst' })
+    expect(interpretResult(WHOLE_ASK, failed(4), undefined)).toEqual({ kind: 'waiting', worker: 'analyst' })
+    expect(interpretResult(WHOLE_ASK, failed(3), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+    expect(interpretResult(WHOLE_ASK, failed(1), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+    expect(interpretResult(PIPED_ASK, failed(2), undefined)).toBeUndefined()
+    expect(interpretResult(PIPED_ASK, failed(4), undefined)).toBeUndefined()
   })
   test('report exit 3 is idle; other report failures say nothing', () => {
-    expect(interpretResult(REPORT, failed(3))).toEqual({ kind: 'idle', worker: 'reviewer' })
-    expect(interpretResult(REPORT, failed(1))).toBeUndefined()
+    expect(interpretResult(WHOLE_REPORT, failed(3), undefined)).toEqual({ kind: 'idle', worker: 'reviewer' })
+    expect(interpretResult(WHOLE_REPORT, failed(1), undefined)).toBeUndefined()
   })
-  test('an empty success is idle, a denied ask is idle', () => {
-    expect(interpretResult(ASK, ok('  \n'))).toEqual({ kind: 'idle', worker: 'analyst' })
-    expect(interpretResult(ASK, { deny: 'no' })).toEqual({ kind: 'idle', worker: 'analyst' })
-    expect(interpretResult(REPORT, { deny: 'no' })).toBeUndefined()
+  test('a denied ask is idle, a denied report says nothing', () => {
+    expect(interpretResult(WHOLE_ASK, { deny: 'no' }, undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+    expect(interpretResult(WHOLE_REPORT, { deny: 'no' }, FILE)).toBeUndefined()
   })
   test('a backgrounded ask leaves the worker as it is', () => {
-    expect(interpretResult(ASK, { result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' }, text: '' })).toBeUndefined()
+    const background = { result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' }, text: '' }
+    expect(interpretResult(WHOLE_ASK, background, FILE)).toBeUndefined()
+  })
+  test('a blank report file is no report', () => {
+    expect(interpretResult(PIPED_ASK, ok(''), '  \n')).toBeUndefined()
   })
 })

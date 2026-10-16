@@ -3,7 +3,7 @@ import type { Hook, Register, Timer } from 'claude-code'
 
 import { fitView, toCells } from './cells'
 import type { PixelMode, View } from './cells'
-import { interpretResult, parseHarnessCall } from './events'
+import { interpretResult, parseHarnessInvocation, reportPathOf } from './events'
 import type { DomainEvent } from './events'
 import { formatGallery, statusSegments } from './gallery'
 import { drawScene } from './scene'
@@ -246,15 +246,21 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     await ensureSite($, rt)
     if (rt.site === undefined || e.tool !== 'Bash') return next(e)
-    const call = parseHarnessCall(e.command)
+    const call = parseHarnessInvocation(e.command)
     if (call === undefined) return next(e)
     if (call.verb === 'ask') await rt.site.emit({ kind: 'ask', worker: call.worker })
     const result = await next(e)
-    const event = interpretResult(call, result)
+    let reportText: string | undefined
+    try {
+      const file = await $.fs.read(reportPathOf(call.worker))
+      reportText = typeof file === 'string' ? file : undefined
+    } catch {
+      reportText = undefined
+    }
+    const event = interpretResult(call, result, reportText)
     if (event !== undefined) await rt.site.emit(event)
     return result
   })
-
   on('prompt.submit', async ($, e, next) => {
     await ensureSite($, rt)
     const result = await next(e)
