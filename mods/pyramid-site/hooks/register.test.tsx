@@ -344,3 +344,13 @@ test('harness report replaying the same file lays no second brick', async ($, on
   await $.tool.call(bash('harness report analyst'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
 })
+
+test('a harness call made by a subagent does not drive the scene', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.files.set(ANALYST_FILE, REPORT)
+  await $.tool.call({ ...bash("harness ask analyst 'go'"), agentId: 'sub-1' } as Args<'tool.call'>)
+  expect(r.store.get('progress')).toBeUndefined()
+  expect(await statusText(ui)).toContain('analyst idle')
+})

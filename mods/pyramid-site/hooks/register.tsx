@@ -245,7 +245,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', async ($, e, next) => {
     await ensureSite($, rt)
-    if (rt.site === undefined || e.tool !== 'Bash') return next(e)
+    if (rt.site === undefined || e.tool !== 'Bash' || e.agentId !== undefined) return next(e)
     const call = parseHarnessInvocation(e.command)
     if (call === undefined) return next(e)
     if (call.verb === 'ask') await rt.site.emit({ kind: 'ask', worker: call.worker })
