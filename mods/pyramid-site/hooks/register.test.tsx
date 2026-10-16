@@ -173,3 +173,45 @@ test('the status poll reconciles worker states', async ($, on) => {
   expect(await statusText(ui)).toContain('■ reviewer ? blocked')
   expect(r.polls[0]).toEqual(['harness', 'status'])
 })
+
+test('harness ask sets the worker working, its report lays a brick', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.answers.push(printed(REPORT))
+  await $.tool.call(bash("harness ask analyst 'Read .harness/task-analyst.md and do it.'"))
+  expect(await statusText(ui)).toContain('■ analyst idle')
+  expect(await statusText(ui)).toContain('🧱 1/28 Pyramid')
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('exit 2 shows the worker blocked, exit 4 waiting', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.answers.push(exited(2), exited(4))
+  await $.tool.call(bash('harness ask reviewer go'))
+  expect(await statusText(ui)).toContain('■ reviewer ? blocked')
+  await $.tool.call(bash('harness ask implementer go'))
+  expect(await statusText(ui)).toContain('■ implementer waiting')
+})
+
+test('reviewer findings crack bricks and the implementer repairs them', async ($, on) => {
+  const r = rig(on, { store: { progress: { v: 1, wonderIndex: 0, bricks: 5, cracked: [], completed: [], seenReports: [], paneWanted: false } } })
+  await $.session.start(START)
+  r.answers.push(printed('# reviewer report\nstatus: done\n## Findings / Decisions\n- [Major] a\n- [Minor] b\n## Verification\n'))
+  await $.tool.call(bash('harness report reviewer'))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 6, cracked: [3, 4] })
+  r.answers.push(printed('# implementer report\nstatus: done\n'))
+  await $.tool.call(bash("harness ask implementer 'fix'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 7, cracked: [] })
+})
+
+test('other Bash commands pass through untouched', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.answers.push(printed('hello'))
+  const result = await $.tool.call(bash('echo hello'))
+  expect(result.text).toBe('hello')
+  expect(r.store.get('progress')).toBeUndefined()
+})

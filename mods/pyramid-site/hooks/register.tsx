@@ -208,4 +208,15 @@ export const register: Register = (on, options) => {
       </Box>
     )
   })
+
+  on('tool.call', async (_$, e, next) => {
+    if (site === undefined || e.tool !== 'Bash') return next(e)
+    const call = parseHarnessCall(e.command)
+    if (call === undefined) return next(e)
+    if (call.verb === 'ask') await site.emit({ kind: 'ask', worker: call.worker })
+    const result = await next(e)
+    const event = interpretResult(call, result)
+    if (event !== undefined) await site.emit(event)
+    return result
+  })
 }
