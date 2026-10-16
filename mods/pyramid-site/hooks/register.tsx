@@ -47,6 +47,7 @@ type Runtime = {
   lastCells: string
   isWorker: boolean
   booting: Promise<void> | undefined
+  isBootScheduled: boolean
 }
 
 function stopLoop(rt: Runtime): void {
@@ -172,14 +173,13 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
     }
   }
 
-  rt.site = { emit, setPaneWanted, openPane, startPoll, stopPoll, ensureLoop }
-
   try {
     const progress = parseProgress(await $.store.get(PROGRESS_KEY))
     await update($, world, () => initialWorld(progress))
   } catch {
     // keep the fresh world
   }
+  rt.site = { emit, setPaneWanted, openPane, startPoll, stopPoll, ensureLoop }
   try {
     await $.command.register({
       name: 'pyramid',
@@ -201,12 +201,26 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
   }
 }
 
+// Every hook but ui.render waits here, so none runs against a half-built site.
 async function ensureSite($: Dollar, rt: Runtime): Promise<void> {
-  if (rt.site !== undefined || rt.isWorker) return
-  rt.booting ??= setup($, rt).finally(() => {
-    rt.booting = undefined
-  })
+  if (rt.isWorker) return
+  if (rt.booting === undefined && rt.site === undefined) {
+    rt.booting = setup($, rt).finally(() => {
+      rt.booting = undefined
+    })
+  }
   await rt.booting
+}
+
+// ui.render must not run the setup (command.register, ui.open and a state update are not for a drawing hook), so it
+// starts the setup from a timer and draws a placeholder until the site exists.
+function scheduleBoot($: Dollar, rt: Runtime): void {
+  if (rt.isWorker || rt.booting !== undefined || rt.isBootScheduled) return
+  rt.isBootScheduled = true
+  $.clock.after(0, () => {
+    rt.isBootScheduled = false
+    void ensureSite($, rt).catch(() => undefined)
+  })
 }
 
 export const register: Register = (on, options) => {
@@ -223,6 +237,7 @@ export const register: Register = (on, options) => {
     lastCells: '',
     isWorker: false,
     booting: undefined,
+    isBootScheduled: false,
   }
 
   on('session.start', async ($, e, next) => {
@@ -231,8 +246,13 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    await ensureSite($, rt)
-    if (rt.site === undefined) return next(e)
+    if (rt.isWorker) return next(e)
+    if (rt.site === undefined) {
+      scheduleBoot($, rt)
+      await read($, world) // subscribes the placeholder, so the setup's world load redraws it
+      const { Text } = $.ui.resolve(e)
+      return <Text key="pyramid-site-starting">Pyramid site starting…</Text>
+    }
     const current = await read($, world)
     const segments = statusSegments(current)
     const { Box, Text } = $.ui.resolve(e)
@@ -241,6 +261,7 @@ export const register: Register = (on, options) => {
         {segments.map(segment => (segment.color === undefined ? segment.text : <Text color={segment.color}>{segment.text}</Text>))}
       </Text>
     )
+    rt.site.startPoll()
     if (e.surface !== 'terminal') {
       rt.view = undefined
       return (
@@ -254,7 +275,6 @@ export const register: Register = (on, options) => {
     const cells = toCells(drawScene(current, rt.anim), rt.mode, nextView)
     rt.view = nextView
     rt.lastCells = cells
-    rt.site.startPoll()
     void rt.site.ensureLoop()
     return (
       <Box key="pyramid-site" flexDirection="column">

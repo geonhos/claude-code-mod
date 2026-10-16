@@ -373,3 +373,49 @@ test('/pyramid starts the poll and closing it stops the poll', async ($, on) => 
   await r.clock.advance(10000)
   expect(r.polls.length).toBe(whileOpen)
 })
+
+test('a hook arriving during the boot waits for it instead of being overwritten', async ($, on) => {
+  const r = rig(on)
+  r.files.set(ANALYST_FILE, REPORT)
+  await Promise.all([$.command.run(command('')), $.tool.call(bash("harness ask analyst 'go'"))])
+  expect((await $.command.run(command('gallery'))).text).toContain('🧱 1/28 Pyramid')
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('a whole ask that exits 0 without a report file falls back to its stdout', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.answers.push(printed(REPORT))
+  await $.tool.call(bash("harness ask analyst 'go'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+})
+
+test('an env-prefixed, timeout-wrapped call counts; a backgrounded one is not whole', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  r.files.set(ANALYST_FILE, REPORT)
+  await $.tool.call(bash("FOO=1 timeout 700 harness ask analyst 'go'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.answers.push(exited(2))
+  await $.tool.call(bash("harness ask reviewer 'go' &"))
+  expect(await statusText(ui)).toContain('reviewer working')
+})
+
+test('the non-terminal pane polls too', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await $.ui.mount({ ...MOUNT, surface: 'desktop', props: PANE_PROPS })
+  await r.clock.advance(2500)
+  expect(r.polls.length).toBeGreaterThanOrEqual(2)
+})
+
+test('ui.render never runs the setup itself, it schedules it', async ($, on) => {
+  const r = rig(on)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  expect(r.registered).toEqual([])
+  expect(await statusText(ui)).toBe('')
+  await r.clock.advance(0)
+  expect(r.registered).toEqual(['pyramid'])
+  expect(await statusText(ui)).toContain('👑 boss')
+})

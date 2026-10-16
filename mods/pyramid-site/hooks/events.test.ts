@@ -44,6 +44,20 @@ describe('parseHarnessInvocation', () => {
     expect(parseHarnessInvocation('cd /repo && harness ask analyst go')).toEqual({ ...ASK, isWhole: false })
     expect(parseHarnessInvocation('harness ask analyst go; echo $?')).toEqual({ ...ASK, isWhole: false })
   })
+  test('a trailing & backgrounds the call, so it is not whole', () => {
+    expect(parseHarnessInvocation('harness ask analyst go &')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('harness ask analyst go 2>&1 &')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('harness ask analyst go && true')).toEqual({ ...ASK, isWhole: false })
+    expect(parseHarnessInvocation('harness ask analyst go 2>&1')).toEqual({ ...ASK, isWhole: true })
+  })
+  test('skips NAME=value words, time and timeout <n> before the program', () => {
+    expect(parseHarnessInvocation('FOO=1 BAR=x harness ask analyst go')).toEqual({ ...ASK, isWhole: true })
+    expect(parseHarnessInvocation('timeout 700 harness ask analyst go')).toEqual({ ...ASK, isWhole: true })
+    expect(parseHarnessInvocation('time harness ask analyst go')).toEqual({ ...ASK, isWhole: true })
+    expect(parseHarnessInvocation('FOO=1 timeout 5m /opt/bin/harness report reviewer')).toEqual({ ...REPORT, isWhole: true })
+    expect(parseHarnessCall('timeout harness ask analyst go')).toBeUndefined()
+    expect(parseHarnessCall('FOO=1 echo harness ask analyst go')).toBeUndefined()
+  })
   test('accepts a path prefix', () => {
     expect(parseHarnessCall('/opt/bin/harness ask reviewer x')).toEqual({ verb: 'ask', worker: 'reviewer' })
     expect(parseHarnessCall('~/.local/bin/harness report analyst')).toEqual({ verb: 'report', worker: 'analyst' })
@@ -68,9 +82,13 @@ describe('interpretResult', () => {
     expect(interpretResult(PIPED_ASK, ok('screen text'), FILE)).toEqual({ kind: 'report', worker: 'analyst', text: FILE })
     expect(interpretResult(WHOLE_REPORT, ok('x'), FILE)).toEqual({ kind: 'report', worker: 'reviewer', text: FILE })
   })
-  test('stdout alone never lays a brick', () => {
+  test('stdout lays a brick only for a whole command that exited 0 with no report file', () => {
     expect(interpretResult(PIPED_ASK, ok('# analyst report\nstatus: done\n'), undefined)).toBeUndefined()
-    expect(interpretResult(WHOLE_ASK, ok('# analyst report\nstatus: done\n'), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+    expect(interpretResult(WHOLE_ASK, ok('# analyst report\nstatus: done\n'), undefined)).toEqual({
+      kind: 'report', worker: 'analyst', text: '# analyst report\nstatus: done\n',
+    })
+    expect(interpretResult(WHOLE_ASK, ok('  \n'), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
+    expect(interpretResult(WHOLE_ASK, failed(3, '# screen'), undefined)).toEqual({ kind: 'idle', worker: 'analyst' })
   })
   test('ask exit codes are trusted only for a whole command', () => {
     expect(interpretResult(WHOLE_ASK, failed(2), undefined)).toEqual({ kind: 'blocked', worker: 'analyst' })
