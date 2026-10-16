@@ -113,3 +113,63 @@ test('harnessPath is the command the poll runs', { options: { harnessPath: '/opt
   await r.clock.advance(0)
   expect(r.polls[0]).toEqual(['/opt/bin/harness', 'status'])
 })
+
+test('the pane is a 72×18 Raster with a status row', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  expect(r.registered).toEqual(['pyramid'])
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  const raster = await ui.find({ type: 'Raster' })
+  expect(raster?.props.columns).toBe(72)
+  expect(raster?.props.rows).toBe(18)
+  expect(decodeCells(String(raster?.props.cells))).toHaveLength(72 * 18 * 3)
+  expect(await statusText(ui)).toContain('🧱 0/28 Pyramid · 완공 0')
+})
+
+test('a narrow, short pane crops the scene', async ($, on) => {
+  rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: { ...PANE_PROPS, bodyColumns: 40, scroll: { offset: 0, bodyRows: 10 } } })
+  const raster = await ui.find({ type: 'Raster' })
+  expect([raster?.props.columns, raster?.props.rows]).toEqual([40, 9])
+})
+
+test('other surfaces get the status row alone', async ($, on) => {
+  rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'desktop', props: PANE_PROPS })
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await statusText(ui)).toContain('👑 boss')
+})
+
+test('the frame loop idles at 2 fps and only blits changes', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  await r.clock.advance(5000)
+  expect(r.blits.length).toBeGreaterThan(0)
+  expect(r.blits.length).toBeLessThanOrEqual(10)
+  expect(new Set(r.blits).size).toBe(r.blits.length)
+})
+
+test('a denied blit stops the loop', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.denyBlits()
+  await r.clock.advance(1000)
+  const count = r.blits.length
+  await r.clock.advance(5000)
+  expect(r.blits.length).toBe(count)
+})
+
+test('the status poll reconciles worker states', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  r.setStatus('analyst      working  w1:p1\nimplementer  idle     w1:p2\nreviewer     blocked  w1:p3\n')
+  await r.clock.advance(2500)
+  expect(await statusText(ui)).toContain('■ analyst working')
+  expect(await statusText(ui)).toContain('■ reviewer ? blocked')
+  expect(r.polls[0]).toEqual(['harness', 'status'])
+})

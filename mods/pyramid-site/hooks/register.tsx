@@ -176,4 +176,36 @@ export const register: Register = (on, options) => {
     }
     return next(e)
   })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    if (site === undefined) return next(e)
+    const current = await read($, world)
+    const segments = statusSegments(current)
+    const { Box, Text } = $.ui.resolve(e)
+    const row = (
+      <Text wrap="truncate-end">
+        {segments.map(segment => (segment.color === undefined ? segment.text : <Text color={segment.color}>{segment.text}</Text>))}
+      </Text>
+    )
+    if (e.surface !== 'terminal') {
+      view = undefined
+      return (
+        <Box key="pyramid-site" flexDirection="column">
+          {row}
+        </Box>
+      )
+    }
+    const { Raster } = $.ui.resolve(e)
+    const nextView = fitView(e.props.bodyColumns, e.props.scroll.bodyRows)
+    const cells = toCells(drawScene(current, anim), mode, nextView)
+    view = nextView
+    lastCells = cells
+    void site.ensureLoop()
+    return (
+      <Box key="pyramid-site" flexDirection="column">
+        <Raster key={RASTER_KEY} columns={nextView.columns} rows={nextView.rows} cells={cells} />
+        {row}
+      </Box>
+    )
+  })
 }
