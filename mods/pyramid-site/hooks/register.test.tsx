@@ -248,3 +248,30 @@ test('/pyramid gallery lists finished wonders', async ($, on) => {
   await $.session.start(START)
   expect((await $.command.run(command('gallery'))).text).toBe('🧱 3/22 Obelisk\nCompleted wonders:\n- Pyramid — 2026-10-16')
 })
+
+test('a day on site: reports finish the pyramid and the gallery records it', async ($, on) => {
+  const r = rig(on, {
+    now: new Date(2026, 9, 16, 15, 0, 0).getTime(),
+    store: { progress: { v: 1, wonderIndex: 0, bricks: 25, cracked: [], completed: [], seenReports: [], paneWanted: false } },
+  })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+
+  r.answers.push(printed('# analyst report — a\nstatus: done\n'))
+  await $.tool.call(bash("harness ask analyst 'look'"))
+  r.answers.push(printed('# reviewer report — b\nstatus: done\n## Findings / Decisions\n- [Minor] x.ts:1 — nit\n## Verification\n'))
+  await $.tool.call(bash("harness ask reviewer 'review'"))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 27, cracked: [25] })
+
+  r.answers.push(printed('# implementer report — c\nstatus: done\n'))
+  await $.tool.call(bash("harness ask implementer 'fix'"))
+  expect(r.store.get('progress')).toMatchObject({ wonderIndex: 1, bricks: 0, cracked: [], completed: [{ wonder: 'Pyramid', date: '2026-10-16' }] })
+  expect(await statusText(ui)).toContain('🧱 0/22 Obelisk · 완공 1')
+
+  r.answers.push(printed('# implementer report — c\nstatus: done\n'))
+  await $.tool.call(bash('harness report implementer'))
+  expect(r.store.get('progress')).toMatchObject({ bricks: 0 })
+
+  await r.clock.advance(83 * 40)
+  expect((await $.command.run(command('gallery'))).text).toBe('🧱 0/22 Obelisk\nCompleted wonders:\n- Pyramid — 2026-10-16')
+})
