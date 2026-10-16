@@ -52,8 +52,11 @@ wonders with dates. Only the conductor session draws (`HARNESS_ROLE=worker` sess
 
 Settings in `/config` → pyramid-site: **harness path** (as kaomoji-status) and **pixel mode**: `half` (default, `▀`
 glyphs) or `space` (coloured spaces) for terminals that draw block glyphs double width, e.g. iTerm2 or Terminal.app
-with "ambiguous characters are double-width" turned on. Restart Claude Code after a change: the poll and the
-animation start at session start.
+with "ambiguous characters are double-width" turned on. A change applies the next time the mod is used; no restart is needed.
+
+The pane polls `harness status` only while it is open. Bricks come from the worker's report file
+(`.harness/reports/<worker>.md`) after a `harness ask` or `harness report`, never from the command's screen output.
+Progress is one record shared by every conductor session: two sessions running at once overwrite each other (last write wins).
 
 ## Local development
 
