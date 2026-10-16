@@ -215,3 +215,14 @@ test('other Bash commands pass through untouched', async ($, on) => {
   expect(result.text).toBe('hello')
   expect(r.store.get('progress')).toBeUndefined()
 })
+
+test('a prompt sends the caravan across the scene', async ($, on) => {
+  const r = rig(on)
+  await $.session.start(START)
+  await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
+  await $.prompt.submit({ text: 'build it', wait: false, origin: { kind: 'composer' } } as Args<'prompt.submit'>)
+  await r.clock.advance(83 * 12)
+  const camel = new Set([PALETTE.A!, PALETTE.a!])
+  const sawCamel = r.blits.some(cells => decodeCells(cells).some((word, i) => i % 3 !== 0 && camel.has(word)))
+  expect(sawCamel).toBe(true)
+})

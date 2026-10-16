@@ -219,4 +219,12 @@ export const register: Register = (on, options) => {
     if (event !== undefined) await site.emit(event)
     return result
   })
+
+  on('prompt.submit', async (_$, e, next) => {
+    const result = await next(e)
+    if (site !== undefined && e.origin.kind === 'composer' && e.command === undefined && e.isMeta !== true) {
+      await site.emit({ kind: 'caravan' })
+    }
+    return result
+  })
 }
