@@ -63,6 +63,12 @@ describe('drawScene', () => {
     expect(luma(lower(unbuilt)) - luma(lower(built))).toBeGreaterThanOrEqual(25)
     expect(sat(lower(built)) - sat(lower(unbuilt))).toBeGreaterThanOrEqual(40)
   })
+  test('separates a built brick face from the sand ground row and dune', () => {
+    const built = drawScene(world({ bricks: 1 }), anim())
+    const face = at(built, 42, 29)
+    expect(luma(at(built, 40, 29)) - luma(face)).toBeGreaterThanOrEqual(20)
+    expect(luma(at(built, 42, 30)) - luma(face)).toBeGreaterThanOrEqual(20)
+  })
   test('gives a built brick a light top row and a darker mortar edge on the right', () => {
     const built = drawScene(world({ bricks: 1 }), anim())
     expect(luma(at(built, 42, 28))).toBeGreaterThan(luma(at(built, 42, 29)))
