@@ -46,6 +46,8 @@ claude plugin update pyramid-site@claude-code-mod
 
 `claude plugin update` applies after a restart; inside a session `/reload-plugins` loads the update without one. Settings and the pyramid progress are kept.
 
+For maintainers: every change to a mod bumps its `.claude-plugin/plugin.json` version (semver: fix = patch, feature = minor), otherwise `claude plugin update` may not pick it up.
+
 ### kaomoji-status
 
 Shows each `harness` (herdr) worker as a kaomoji in one row above the prompt:

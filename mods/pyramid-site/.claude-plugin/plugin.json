@@ -1,6 +1,6 @@
 {
   "name": "pyramid-site",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An animated pixel-art pyramid construction site in a side pane: the harness conductor cracks the whip, workers carry bricks, every report adds one.",
   "author": { "name": "geonhos" },
   "types": "./types/index.d.ts",
