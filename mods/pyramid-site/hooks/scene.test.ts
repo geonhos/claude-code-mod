@@ -24,6 +24,7 @@ const anim = (over: Partial<Anim> = {}): Anim => ({
   clouds: CLOUD_START.map(c => c.x),
   ...over,
 })
+const luma = (color: number): number => 0.2126 * ((color >>> 16) & 0xff) + 0.7152 * ((color >>> 8) & 0xff) + 0.0722 * (color & 0xff)
 const at = (pixels: Uint32Array, x: number, y: number): number => pixels[y * W + x]!
 
 describe('drawScene', () => {
@@ -35,14 +36,33 @@ describe('drawScene', () => {
   test('draws the overseer headdress in gold', () => {
     expect(at(drawScene(world(), anim()), 4, 16)).toBe(PALETTE.G!)
   })
-  test('draws built bricks in sandstone and unbuilt slots faintly', () => {
+  test('draws built bricks well apart from unbuilt slots', () => {
     const slot = WONDERS[0]!.slots[1]!
-    const built = drawScene(world({ bricks: 1 }), anim())
-    expect(at(built, 42, 28)).toBe(0xecd59f)
-    expect(at(built, slot.x + 1, slot.y + 1)).not.toBe(0xecd59f)
+    const built = drawScene(world({ bricks: 2 }), anim())
+    const unbuilt = drawScene(world({ bricks: 1 }), anim())
+    expect(luma(at(built, slot.x, slot.y)) - luma(at(unbuilt, slot.x, slot.y))).toBeLessThanOrEqual(-40)
+    expect(luma(at(built, slot.x, slot.y)) - luma(at(built, slot.x, slot.y - 6))).toBeLessThanOrEqual(-40)
   })
-  test('draws a dark crack on a cracked brick', () => {
-    expect(at(drawScene(world({ bricks: 1, cracked: [0] }), anim()), 43, 28)).toBe(CRACK)
+  test('gives a built brick a darker mortar line at the bottom and right', () => {
+    const built = drawScene(world({ bricks: 1 }), anim())
+    expect(luma(at(built, 42, 29))).toBeLessThan(luma(at(built, 42, 28)))
+    expect(luma(at(built, 45, 28))).toBeLessThan(luma(at(built, 42, 28)))
+  })
+  test('draws unbuilt slots as a faint dotted outline', () => {
+    const slot = WONDERS[0]!.slots[1]!
+    const scene = drawScene(world({ bricks: 0 }), anim())
+    let tinted = 0
+    for (let dy = 0; dy < 2; dy += 1) for (let dx = 0; dx < 4; dx += 1) if (at(scene, slot.x + dx, slot.y + dy) !== skyAt(slot.y + dy)) tinted += 1
+    expect(tinted).toBeGreaterThan(0)
+    expect(tinted).toBeLessThan(8)
+  })
+  test('draws a dark zig-zag crack of at least 4 px and a red tint on a cracked brick', () => {
+    const plain = drawScene(world({ bricks: 1 }), anim())
+    const cracked = drawScene(world({ bricks: 1, cracked: [0] }), anim())
+    const cracks = [0, 1].flatMap(dy => [0, 1, 2, 3].map(dx => at(cracked, 42 + dx, 28 + dy))).filter(color => color === CRACK)
+    expect(cracks.length).toBeGreaterThanOrEqual(4)
+    const face = (scene: Uint32Array): number => at(scene, 42, 28)
+    expect(((face(cracked) >>> 16) & 0xff) - (face(cracked) & 0xff)).toBeGreaterThan(((face(plain) >>> 16) & 0xff) - (face(plain) & 0xff))
   })
   test('turns every built brick gold during a gold flash', () => {
     expect(at(drawScene(world({ bricks: 2 }), anim({ gold: 5 })), 46, 29)).toBe(0xe9b949)

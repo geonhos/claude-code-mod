@@ -23,7 +23,11 @@ export type Anim = {
 
 export const SKY_TOP = 0x5fa8e0
 export const SKY_BOTTOM = 0xc4e6f3
-export const CRACK = 0x4a2f1a
+export const CRACK = 0x3a1608
+const BRICK_FACE = 0xd4923f
+const BRICK_MORTAR = 0x8a5524
+const CRACKED_FACE = 0xd8482e
+const CRACKED_MORTAR = 0x80301f
 export const SCROLL_AT = { x: BOSS_X + 2, y: BOSS_Y - 3 } as const
 
 export function mix(a: number, b: number, t: number): number {
@@ -96,7 +100,9 @@ function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void 
       for (let dx = 0; dx < BRICK_W; dx += 1) {
         let color: number
         if (i >= bricks) {
-          color = mix(skyAt(slot.y + dy), 0xd6b574, dy === 0 || dx === 0 ? 0.32 : 0.16)
+          // only some outline pixels, so an unbuilt slot reads as a faint dotted frame
+          const isOutline = (dy === 0 && dx % 2 === 0) || (dx === 0 && dy === 1)
+          color = isOutline ? mix(skyAt(slot.y + dy), 0xd6b574, 0.14) : skyAt(slot.y + dy)
         } else if (anim.done !== undefined && i === last) {
           color = dy === 0 && dx < 3 ? 0xffe27a : 0xe9b949
         } else if (anim.gold > 0) {
@@ -104,14 +110,16 @@ function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void 
         } else if (anim.flash > 0 && i === anim.flashSlot) {
           color = anim.flash % 2 === 1 ? 0xfff6d6 : 0xf2dfa8
         } else {
-          color = dy === 0 ? (dx < 3 ? 0xecd59f : 0xd4b373) : dx < 3 ? 0xd4b373 : 0xa8864c
+          const isMortar = dy === BRICK_H - 1 || dx === BRICK_W - 1
+          const isCracked = cracked.includes(i)
+          color = isCracked ? (isMortar ? CRACKED_MORTAR : CRACKED_FACE) : isMortar ? BRICK_MORTAR : BRICK_FACE
         }
         put(pixels, slot.x + dx, slot.y + dy, color)
       }
     }
-    if (i < bricks && cracked.includes(i)) {
-      put(pixels, slot.x + 1, slot.y, CRACK)
-      put(pixels, slot.x + 2, slot.y + 1, CRACK)
+    if (i < bricks && cracked.includes(i) && anim.done === undefined) {
+      // a dark zig-zag across the whole brick, whatever flash is running
+      for (const [dx, dy] of [[0, 1], [1, 0], [2, 1], [3, 0]] as const) put(pixels, slot.x + dx, slot.y + dy, CRACK)
     }
   })
 }
