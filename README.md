@@ -23,6 +23,29 @@ Type at the prompt of a terminal Claude Code session:
 
 Answer `y` to add the marketplace, then pick a scope (user scope is first; press Enter).
 
+## Updating
+
+The marketplace is named `claude-code-mod`. To get new mods (such as pyramid-site) and later updates, refresh the marketplace, then update the plugin.
+
+In a Claude Code session:
+
+```
+/plugin marketplace update claude-code-mod
+/plugin install pyramid-site --marketplace geonhos/claude-code-mod
+/reload-plugins
+```
+
+From a shell:
+
+```bash
+claude plugin marketplace update claude-code-mod
+claude plugin install pyramid-site@claude-code-mod   # a mod you have not installed yet
+claude plugin update kaomoji-status@claude-code-mod  # a mod you already have
+claude plugin update pyramid-site@claude-code-mod
+```
+
+`claude plugin update` applies after a restart; inside a session `/reload-plugins` loads the update without one. Settings and the pyramid progress are kept.
+
 ### kaomoji-status
 
 Shows each `harness` (herdr) worker as a kaomoji in one row above the prompt:
