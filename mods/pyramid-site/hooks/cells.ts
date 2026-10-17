@@ -1,19 +1,23 @@
 import { H, W } from './sprites'
 
 export type PixelMode = 'half' | 'space'
-export type View = { x0: number; y0: number; columns: number; rows: number }
+// `sceneRows` is the full scene height the view is cut from; `rows` is how many of its bottom rows show.
+export type View = { x0: number; y0: number; columns: number; rows: number; sceneRows: number }
 
 export const SCENE_ROWS = H / 2
+export const MAX_SCENE_ROWS = 40
 export const UPPER_HALF = 0x2580
 export const SPACE = 0x20
 export const DEFAULT_COLOR = 0x01000000
 
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, Math.floor(value)))
 
+// The scene fills the pane body minus the status row (18 to 40 rows). A pane shorter than 18 rows crops sky from the top.
 export function fitView(bodyColumns: number, bodyRows: number): View {
   const columns = clamp(bodyColumns, 1, W)
-  const rows = clamp(bodyRows - 1, 1, SCENE_ROWS)
-  return { x0: W - columns, y0: SCENE_ROWS - rows, columns, rows }
+  const sceneRows = clamp(bodyRows - 1, SCENE_ROWS, MAX_SCENE_ROWS)
+  const rows = clamp(bodyRows - 1, 1, sceneRows)
+  return { x0: W - columns, y0: sceneRows - rows, columns, rows, sceneRows }
 }
 
 export function toWords(pixels: Uint32Array, mode: PixelMode, view: View): Uint32Array {

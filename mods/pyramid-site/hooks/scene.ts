@@ -40,14 +40,28 @@ export function mix(a: number, b: number, t: number): number {
   return out >>> 0
 }
 
-export const skyAt = (y: number): number => mix(SKY_TOP, SKY_BOTTOM, Math.min(1, y / (GROUND - 1)))
+export const skyAt = (y: number, ground = GROUND): number => mix(SKY_TOP, SKY_BOTTOM, Math.min(1, y / (ground - 1)))
+
+// The sprites and wonders are laid out for the 72×36 base scene. A taller scene adds sky above them (dy rows) and a
+// deeper ground band below, so everything keeps standing on the ground line that sits `H - GROUND` rows plus the
+// extra ground from the bottom. `put` shifts base coordinates by dy.
+type Frame = { dy: number; h: number; ground: number }
+let frame: Frame = { dy: 0, h: H, ground: GROUND }
+
+export function frameFor(rows: number): Frame {
+  const extra = Math.max(0, Math.round(rows) * 2 - H)
+  const deeper = Math.floor(extra / 3)
+  const dy = extra - deeper
+  return { dy, h: H + extra, ground: GROUND + dy }
+}
+const skyY = (y: number): number => skyAt(y + frame.dy, frame.ground)
 
 const hash = (x: number, y: number): number => (Math.imul(x + 1, 73856093) ^ Math.imul(y + 7, 19349663)) >>> 0
 
 function put(pixels: Uint32Array, x: number, y: number, color: number): void {
   const px = Math.floor(x)
-  const py = Math.floor(y)
-  if (px >= 0 && px < W && py >= 0 && py < H) pixels[py * W + px] = color
+  const py = Math.floor(y) + frame.dy
+  if (px >= 0 && px < W && py >= 0 && py < frame.h) pixels[py * W + px] = color
 }
 
 function sprite(pixels: Uint32Array, rows: Sprite, x: number, y: number, palette: Palette, flip = false): void {
@@ -62,17 +76,38 @@ function sprite(pixels: Uint32Array, rows: Sprite, x: number, y: number, palette
   })
 }
 
-function drawBackdrop(pixels: Uint32Array, anim: Anim): void {
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
-      if (y < GROUND) {
-        pixels[y * W + x] = skyAt(y)
-        continue
-      }
-      const h = hash(x, y)
-      pixels[y * W + x] = y === GROUND ? 0xe3c486 : h % 7 === 0 ? 0xc4a161 : h % 11 === 0 ? 0xe6cc92 : 0xd6b574
+const sandAt = (x: number, y: number, ground: number): number => {
+  const h = hash(x, y)
+  if (y === ground) return 0xe3c486
+  if (y < ground + 6) return h % 7 === 0 ? 0xc4a161 : h % 11 === 0 ? 0xe6cc92 : 0xd6b574
+  // deeper strata: darker with depth, in bands, with a few buried stones
+  const depth = y - ground - 6
+  const band = Math.floor(depth / 4) % 2 === 0 ? 0 : 0.08
+  const base = mix(0xd6b574, 0x8a6a3c, Math.min(1, depth / 24) * 0.7 + band)
+  return h % 9 === 0 ? mix(base, 0x5a4326, 0.3) : h % 13 === 0 ? mix(base, 0xf0dca0, 0.2) : base
+}
+
+function drawBuriedStones(pixels: Uint32Array, ground: number, h: number): void {
+  for (let y = ground + 8; y < h; y += 1) {
+    for (let x = 0; x < W - 2; x += 1) {
+      const key = hash(x * 3, y * 5)
+      if (key % 61 !== 0) continue
+      const color = key % 2 === 0 ? 0x9a948a : 0x7d776d
+      pixels[y * W + x] = color
+      pixels[y * W + x + 1] = color
+      if (y + 1 < h) pixels[(y + 1) * W + x] = 0x6a645a
     }
   }
+}
+
+function drawBackdrop(pixels: Uint32Array, anim: Anim): void {
+  const { h, ground, dy } = frame
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < W; x += 1) pixels[y * W + x] = y < ground ? skyAt(y, ground) : sandAt(x, y, ground)
+  }
+  drawBuriedStones(pixels, ground, h)
+  // sun and clouds hug the top of the pane whatever its height
+  frame = { ...frame, dy: 0 }
   for (let y = 2; y < 7; y += 1) {
     for (let x = 27; x < 32; x += 1) {
       const edge = y === 2 || y === 6 || x === 27 || x === 31
@@ -83,9 +118,17 @@ function drawBackdrop(pixels: Uint32Array, anim: Anim): void {
     const start = CLOUD_START[i]
     if (start !== undefined) sprite(pixels, CLOUDS[start.p]!, Math.round(cx), start.y, { W: 0xffffff })
   })
+  // a taller sky gets more clouds, drifting with the same animation
+  const spare = Math.min(3, Math.floor(dy / 7))
+  for (let i = 0; i < spare; i += 1) {
+    const cx = anim.clouds[i % Math.max(1, anim.clouds.length)] ?? 0
+    const x = (((Math.round(cx) + 37 + i * 23) % 90) + 90) % 90 - 12
+    sprite(pixels, CLOUDS[i % 2]!, x, 11 + i * 7, { W: 0xffffff })
+  }
+  frame = { ...frame, dy }
   for (let x = 0; x < W; x += 1) {
-    const h = Math.max(1, Math.round(2.2 + 1.3 * Math.sin(x * 0.17) + 0.9 * Math.sin(x * 0.06 + 2)))
-    for (let y = GROUND - h; y < GROUND; y += 1) put(pixels, x, y, y === GROUND - h ? 0xefd9a6 : 0xe3c88f)
+    const dune = Math.max(1, Math.round(2.2 + 1.3 * Math.sin(x * 0.17) + 0.9 * Math.sin(x * 0.06 + 2)))
+    for (let y = GROUND - dune; y < GROUND; y += 1) put(pixels, x, y, y === GROUND - dune ? 0xefd9a6 : 0xe3c88f)
   }
 }
 
@@ -102,7 +145,7 @@ function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void 
         if (i >= bricks) {
           // only some outline pixels, so an unbuilt slot reads as a faint dotted frame
           const isOutline = (dy === 0 && dx % 2 === 0) || (dx === 0 && dy === 1)
-          color = isOutline ? mix(skyAt(slot.y + dy), 0xd6b574, 0.14) : skyAt(slot.y + dy)
+          color = isOutline ? mix(skyY(slot.y + dy), 0xd6b574, 0.14) : skyY(slot.y + dy)
         } else if (anim.done !== undefined && i === last) {
           color = dy === 0 && dx < 3 ? 0xffe27a : 0xe9b949
         } else if (anim.gold > 0) {
@@ -152,7 +195,7 @@ function drawZeds(pixels: Uint32Array, x: number, top: number, tick: number): vo
   ] as const
   for (const zed of zeds) {
     const y = top - 1 - Math.floor(zed.age / 4) - zed.rows.length
-    const color = mix(0xffffff, skyAt(y), (zed.age / ZED_CYCLE) * 0.85)
+    const color = mix(0xffffff, skyY(y), (zed.age / ZED_CYCLE) * 0.85)
     sprite(pixels, zed.rows, x + zed.dx + Math.floor(zed.age / 16), y, { W: color })
   }
 }
@@ -179,8 +222,9 @@ function drawWorkers(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void
   }
 }
 
-export function drawScene(world: PyramidWorld, anim: Anim): Uint32Array {
-  const pixels = new Uint32Array(W * H)
+export function drawScene(world: PyramidWorld, anim: Anim, rows = H / 2): Uint32Array {
+  frame = frameFor(rows)
+  const pixels = new Uint32Array(W * frame.h)
   drawBackdrop(pixels, anim)
   drawWonder(pixels, world, anim)
   drawOverseer(pixels, anim)

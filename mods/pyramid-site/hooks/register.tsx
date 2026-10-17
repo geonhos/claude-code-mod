@@ -92,7 +92,7 @@ async function setup($: Dollar, rt: Runtime): Promise<void> {
       const current = await read($, world)
       rt.anim = step(rt.anim, current)
       if (rt.view !== undefined) {
-        const cells = toCells(drawScene(current, rt.anim), rt.mode, rt.view)
+        const cells = toCells(drawScene(current, rt.anim, rt.view.sceneRows), rt.mode, rt.view)
         if (cells !== rt.lastCells) {
           const shown = await $.ui.blit({ requestId: PANE, key: RASTER_KEY, cells })
           if (shown.deny === undefined) rt.lastCells = cells
@@ -272,7 +272,7 @@ export const register: Register = (on, options) => {
     }
     const { Raster } = $.ui.resolve(e)
     const nextView = fitView(e.props.bodyColumns, e.props.scroll.bodyRows)
-    const cells = toCells(drawScene(current, rt.anim), rt.mode, nextView)
+    const cells = toCells(drawScene(current, rt.anim, nextView.sceneRows), rt.mode, nextView)
     rt.view = nextView
     rt.lastCells = cells
     void rt.site.ensureLoop()

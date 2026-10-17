@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { PyramidProgress, PyramidWorld } from '../types'
-import { CRACK, SCROLL_AT, drawScene, skyAt } from './scene'
+import { CRACK, SCROLL_AT, drawScene, frameFor, skyAt } from './scene'
 import type { Anim } from './scene'
 import { CLOUD_START, H, PALETTE, W, WONDERS } from './sprites'
 
@@ -32,6 +32,24 @@ describe('drawScene', () => {
     const pixels = drawScene(world(), anim())
     expect(pixels).toHaveLength(W * H)
     expect(at(pixels, 0, 0)).toBe(skyAt(0))
+  })
+  test('grows to the requested number of rows with sky above and strata below', () => {
+    const tall = drawScene(world(), anim(), 30)
+    expect(tall).toHaveLength(W * 60)
+    expect(at(tall, 0, 0)).toBe(skyAt(0))
+    expect(at(tall, 0, 59)).not.toBe(at(tall, 0, 31))
+    expect(drawScene(world(), anim(), 18)).toHaveLength(W * H)
+    expect(drawScene(world(), anim(), 40)).toHaveLength(W * 80)
+  })
+  for (const rows of [18, 30, 40]) test(`keeps the actors standing on the ground at ${rows} rows`, () => {
+    const scene = drawScene(world({ bricks: 1 }), anim(), rows)
+    const h = rows * 2
+    const ground = frameFor(rows).ground
+    // a worker's boots and the first brick rest on the ground line, which sits at a fixed offset
+    expect(at(scene, 25 + 5, ground - 1)).toBe(PALETTE.K!)
+    expect(at(scene, 43, ground - 1)).not.toBe(skyAt(ground - 1, ground))
+    expect(ground).toBeLessThan(h)
+    expect(h - ground).toBeGreaterThanOrEqual(6)
   })
   test('draws the overseer headdress in gold', () => {
     expect(at(drawScene(world(), anim()), 4, 16)).toBe(PALETTE.G!)

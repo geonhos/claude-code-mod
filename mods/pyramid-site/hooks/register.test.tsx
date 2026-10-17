@@ -125,16 +125,30 @@ test('harnessPath is the command the poll runs', { options: { harnessPath: '/opt
   expect(r.polls[0]).toEqual(['/opt/bin/harness', 'status'])
 })
 
-test('the pane is a 72×18 Raster with a status row', async ($, on) => {
+test('the pane is a Raster as tall as the pane body minus the status row', async ($, on) => {
   const r = rig(on)
   await $.session.start(START)
   expect(r.registered).toEqual(['pyramid'])
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   const raster = await ui.find({ type: 'Raster' })
   expect(raster?.props.columns).toBe(72)
-  expect(raster?.props.rows).toBe(18)
-  expect(decodeCells(String(raster?.props.cells))).toHaveLength(72 * 18 * 3)
+  expect(raster?.props.rows).toBe(29)
+  expect(decodeCells(String(raster?.props.cells))).toHaveLength(72 * 29 * 3)
   expect(await statusText(ui)).toContain('🧱 0/28 Pyramid | 완공 0')
+})
+
+test('a 19-row pane gets the base 72×18 scene', async ($, on) => {
+  rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: { ...PANE_PROPS, scroll: { offset: 0, bodyRows: 19 } } })
+  expect((await ui.find({ type: 'Raster' }))?.props.rows).toBe(18)
+})
+
+test('a very tall pane is capped at 40 scene rows', async ($, on) => {
+  rig(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...MOUNT, props: { ...PANE_PROPS, scroll: { offset: 0, bodyRows: 80 } } })
+  expect((await ui.find({ type: 'Raster' }))?.props.rows).toBe(40)
 })
 
 test('a narrow, short pane crops the scene', async ($, on) => {
