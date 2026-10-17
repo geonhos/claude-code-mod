@@ -134,7 +134,7 @@ test('the pane is a Raster as tall as the pane body minus the status row', async
   expect(raster?.props.columns).toBe(72)
   expect(raster?.props.rows).toBe(29)
   expect(decodeCells(String(raster?.props.cells))).toHaveLength(72 * 29 * 3)
-  expect(await statusText(ui)).toContain('🧱 0/28 Pyramid | 완공 0')
+  expect(await statusText(ui)).toContain('🧱0/28')
 })
 
 test('a 19-row pane gets the base 72×18 scene', async ($, on) => {
@@ -164,7 +164,7 @@ test('other surfaces get the status row alone', async ($, on) => {
   await $.session.start(START)
   const ui = await $.ui.mount({ ...MOUNT, surface: 'desktop', props: PANE_PROPS })
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
-  expect(await statusText(ui)).toContain('👑 boss')
+  expect(await statusText(ui)).toContain('👑')
 })
 
 test('the frame loop idles at 2 fps and only blits changes', async ($, on) => {
@@ -194,8 +194,8 @@ test('the status poll reconciles worker states', async ($, on) => {
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   r.setStatus('analyst      working  w1:p1\nimplementer  idle     w1:p2\nreviewer     blocked  w1:p3\n')
   await r.clock.advance(2500)
-  expect(await statusText(ui)).toContain('analyst working')
-  expect(await statusText(ui)).toContain('reviewer ? blocked')
+  expect(await statusText(ui)).toContain('analyst 일함')
+  expect(await statusText(ui)).toContain('reviewer ?막힘')
   expect(r.polls[0]).toEqual(['harness', 'status'])
 })
 
@@ -206,8 +206,8 @@ test('harness ask sets the worker working, its report lays a brick', async ($, o
   r.files.set(ANALYST_FILE, REPORT)
   r.answers.push(printed('screen text'))
   await $.tool.call(bash("harness ask analyst 'Read .harness/task-analyst.md and do it.'"))
-  expect(await statusText(ui)).toContain('analyst idle')
-  expect(await statusText(ui)).toContain('🧱 1/28 Pyramid')
+  expect(await statusText(ui)).toContain('analyst 쉼')
+  expect(await statusText(ui)).toContain('🧱1/28')
   expect(r.store.get('progress')).toMatchObject({ bricks: 1 })
 })
 
@@ -217,9 +217,9 @@ test('exit 2 shows the worker blocked, exit 4 waiting', async ($, on) => {
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   r.answers.push(exited(2), exited(4))
   await $.tool.call(bash('harness ask reviewer go'))
-  expect(await statusText(ui)).toContain('reviewer ? blocked')
+  expect(await statusText(ui)).toContain('reviewer ?막힘')
   await $.tool.call(bash('harness ask implementer go'))
-  expect(await statusText(ui)).toContain('implementer waiting')
+  expect(await statusText(ui)).toContain('implementer 대기')
 })
 
 test('reviewer findings crack bricks and the implementer repairs them', async ($, on) => {
@@ -292,7 +292,7 @@ test('a day on site: reports finish the pyramid and the gallery records it', asy
   r.files.set(IMPLEMENTER_FILE, '# implementer report — c\nstatus: done\n')
   await $.tool.call(bash("harness ask implementer 'fix'"))
   expect(r.store.get('progress')).toMatchObject({ wonderIndex: 1, bricks: 0, cracked: [], completed: [{ wonder: 'Pyramid', date: '2026-10-16' }] })
-  expect(await statusText(ui)).toContain('🧱 0/22 Obelisk | 완공 1')
+  expect(await statusText(ui)).toContain('🧱0/22')
 
   await $.tool.call(bash('harness report implementer'))
   expect(r.store.get('progress')).toMatchObject({ bricks: 0 })
@@ -319,7 +319,7 @@ test('a piped ask never lays a brick from screen text', async ($, on) => {
   await $.tool.call(bash("harness ask reviewer 'x' || true"))
   expect(r.store.get('progress')).toBeUndefined()
   await $.tool.call(bash("harness ask reviewer 'x' | cat"))
-  expect(await statusText(ui)).toContain('reviewer working')
+  expect(await statusText(ui)).toContain('reviewer 일함')
 })
 
 test('a piped ask lays a brick once the report file is there', async ($, on) => {
@@ -338,7 +338,7 @@ test('a quoted mention of harness is not a call', async ($, on) => {
   r.files.set(REVIEWER_FILE, REPORT)
   r.answers.push(printed('[main abc] harness ask reviewer'))
   await $.tool.call(bash('git commit -m "harness ask reviewer"'))
-  expect(await statusText(ui)).toContain('reviewer idle')
+  expect(await statusText(ui)).toContain('reviewer 쉼')
   expect(r.store.get('progress')).toBeUndefined()
 })
 
@@ -366,7 +366,7 @@ test('a harness call made by a subagent does not drive the scene', async ($, on)
   r.files.set(ANALYST_FILE, REPORT)
   await $.tool.call({ ...bash("harness ask analyst 'go'"), agentId: 'sub-1' } as Args<'tool.call'>)
   expect(r.store.get('progress')).toBeUndefined()
-  expect(await statusText(ui)).toContain('analyst idle')
+  expect(await statusText(ui)).toContain('analyst 쉼')
 })
 
 test('nothing polls while the pane is closed and not wanted', async ($, on) => {
@@ -413,7 +413,7 @@ test('an env-prefixed, timeout-wrapped call counts; a backgrounded one is not wh
   const ui = await $.ui.mount({ ...MOUNT, props: PANE_PROPS })
   r.answers.push(exited(2))
   await $.tool.call(bash("harness ask reviewer 'go' &"))
-  expect(await statusText(ui)).toContain('reviewer working')
+  expect(await statusText(ui)).toContain('reviewer 일함')
 })
 
 test('the non-terminal pane polls too', async ($, on) => {
@@ -431,5 +431,5 @@ test('ui.render never runs the setup itself, it schedules it', async ($, on) => 
   expect(await statusText(ui)).toBe('')
   await r.clock.advance(0)
   expect(r.registered).toEqual(['pyramid'])
-  expect(await statusText(ui)).toContain('👑 boss')
+  expect(await statusText(ui)).toContain('👑')
 })

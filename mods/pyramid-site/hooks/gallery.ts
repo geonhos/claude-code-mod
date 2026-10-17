@@ -16,17 +16,19 @@ export function formatGallery(progress: PyramidProgress): string {
 }
 
 const STATE_TEXT: Readonly<Record<PyramidWorkerState, Segment>> = {
-  idle: { text: ' idle' },
-  working: { text: ' working' },
-  blocked: { text: ' ? blocked', color: toHexColor(PALETTE.X!) },
-  waiting: { text: ' waiting' },
+  idle: { text: ' 쉼' },
+  working: { text: ' 일함' },
+  blocked: { text: ' ?막힘', color: toHexColor(PALETTE.X!) },
+  waiting: { text: ' 대기' },
 }
 
+// One row that fits the 72-cell pane: crown, the workers with a short state each, and the brick count.
 export function statusSegments(world: PyramidWorld): Segment[] {
-  const segments: Segment[] = [{ text: '👑 boss' }]
+  const segments: Segment[] = [{ text: '👑' }]
   for (const name of WORKER_NAMES) {
-    segments.push({ text: '  ' }, { text: name, color: toHexColor(WORKER_SHIRT[name].C!) }, STATE_TEXT[world.workers[name]])
+    segments.push({ text: ' ' }, { text: name, color: toHexColor(WORKER_SHIRT[name].C!) }, STATE_TEXT[world.workers[name]])
   }
-  segments.push({ text: `  ${progressLine(world.progress)} | 완공 ${world.progress.completed.length}` })
+  const wonder = wonderAt(world.progress.wonderIndex)
+  segments.push({ text: `  🧱${world.progress.bricks}/${wonder.slots.length}` })
   return segments
 }
