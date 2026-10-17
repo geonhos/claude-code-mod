@@ -31,8 +31,8 @@ export const LEGS_A: Sprite = ['..L..L.', '.L...L.', 'KK...KK']
 export const LEGS_B: Sprite = ['..LLL..', '...LL..', '...KKK.']
 export const SIT: Sprite = ['.......', '.......', '.......', '..YYY..', '.YYYYY.', 'yyyyyyy', '..SSsS.', '..SSSS.', '.SCCCCS', '..CCCC.', '..ccLLL', '..LLLKK']
 export const QMARK: Sprite = ['XXX', '..X', '.XX', '...', '.X.']
-export const ZED_SMALL: Sprite = ['WWWW', '..W.', '.W..', 'WWWW']
-export const ZED_LARGE: Sprite = ['WWWWW', '...W.', '..W..', '.W...', 'WWWWW']
+export const ZED_SMALL: Sprite = ['WWW', '..W', '.W.', 'WWW']
+export const ZED_LARGE: Sprite = ['WWWW', '..W.', '.W..', 'WWWW']
 export const DROPPED_BRICK: Sprite = ['RRr', 'rrr']
 export const BOSS: Sprite = [
   '...GGG...', '..GBGBG..', '.GBSSSKG.', '.BGSSSSB.', '.G.SSN.G.', '..GGGGG..', '..WWWWWS.',

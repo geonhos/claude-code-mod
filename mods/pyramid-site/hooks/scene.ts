@@ -24,8 +24,9 @@ export type Anim = {
 export const SKY_TOP = 0x5fa8e0
 export const SKY_BOTTOM = 0xc4e6f3
 export const CRACK = 0x3a1608
-const BRICK_FACE = 0xd4923f
-const BRICK_MORTAR = 0x8a5524
+const BRICK_FACE = 0xd9b26a
+const BRICK_TOP = 0xeccb8a
+const BRICK_MORTAR = 0xa87a3e
 const CRACKED_FACE = 0xd8482e
 const CRACKED_MORTAR = 0x80301f
 export const SCROLL_AT = { x: BOSS_X + 2, y: BOSS_Y - 3 } as const
@@ -143,9 +144,8 @@ function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void 
       for (let dx = 0; dx < BRICK_W; dx += 1) {
         let color: number
         if (i >= bricks) {
-          // only some outline pixels, so an unbuilt slot reads as a faint dotted frame
-          const isOutline = (dy === 0 && dx % 2 === 0) || (dx === 0 && dy === 1)
-          color = isOutline ? mix(skyY(slot.y + dy), 0xd6b574, 0.14) : skyY(slot.y + dy)
+          // a soft sand-tinted silhouette so the whole wonder shape can be read before it is built
+          color = mix(skyY(slot.y + dy), 0xd6b574, 0.24)
         } else if (anim.done !== undefined && i === last) {
           color = dy === 0 && dx < 3 ? 0xffe27a : 0xe9b949
         } else if (anim.gold > 0) {
@@ -153,9 +153,9 @@ function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void 
         } else if (anim.flash > 0 && i === anim.flashSlot) {
           color = anim.flash % 2 === 1 ? 0xfff6d6 : 0xf2dfa8
         } else {
-          const isMortar = dy === BRICK_H - 1 || dx === BRICK_W - 1
+          const isMortar = dx === BRICK_W - 1
           const isCracked = cracked.includes(i)
-          color = isCracked ? (isMortar ? CRACKED_MORTAR : CRACKED_FACE) : isMortar ? BRICK_MORTAR : BRICK_FACE
+          color = isCracked ? (isMortar ? CRACKED_MORTAR : CRACKED_FACE) : isMortar ? BRICK_MORTAR : dy === 0 ? BRICK_TOP : BRICK_FACE
         }
         put(pixels, slot.x + dx, slot.y + dy, color)
       }
@@ -187,16 +187,17 @@ function drawCaravan(pixels: Uint32Array, anim: Anim): void {
 
 const ZED_CYCLE = 48
 
-// Two Zs of different sizes rise from the sleeper's head, half a cycle apart, and fade toward the sky colour.
+// Two small Zs rise a few pixels from just above the sleeper's hat, half a cycle apart, fading toward the sky colour.
 function drawZeds(pixels: Uint32Array, x: number, top: number, tick: number): void {
+  const hat = top + 3
   const zeds = [
-    { rows: ZED_SMALL, age: tick % ZED_CYCLE, dx: 5 },
-    { rows: ZED_LARGE, age: (tick + ZED_CYCLE / 2) % ZED_CYCLE, dx: 8 },
+    { rows: ZED_SMALL, age: tick % ZED_CYCLE, dx: 4 },
+    { rows: ZED_LARGE, age: (tick + ZED_CYCLE / 2) % ZED_CYCLE, dx: 7 },
   ] as const
   for (const zed of zeds) {
-    const y = top - 1 - Math.floor(zed.age / 4) - zed.rows.length
-    const color = mix(0xffffff, skyY(y), (zed.age / ZED_CYCLE) * 0.85)
-    sprite(pixels, zed.rows, x + zed.dx + Math.floor(zed.age / 16), y, { W: color })
+    const y = hat - 2 - zed.rows.length - Math.floor(zed.age / 12)
+    const color = mix(0xffffff, skyY(y), (zed.age / ZED_CYCLE) * 0.8)
+    sprite(pixels, zed.rows, x + zed.dx + Math.floor(zed.age / 24), y, { W: color })
   }
 }
 

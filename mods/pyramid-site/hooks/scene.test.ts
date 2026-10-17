@@ -54,25 +54,30 @@ describe('drawScene', () => {
   test('draws the overseer headdress in gold', () => {
     expect(at(drawScene(world(), anim()), 4, 16)).toBe(PALETTE.G!)
   })
-  test('draws built bricks well apart from unbuilt slots', () => {
+  test('draws built sandstone clearly darker and more saturated than the unbuilt silhouette', () => {
     const slot = WONDERS[0]!.slots[1]!
     const built = drawScene(world({ bricks: 2 }), anim())
     const unbuilt = drawScene(world({ bricks: 1 }), anim())
-    expect(luma(at(built, slot.x, slot.y)) - luma(at(unbuilt, slot.x, slot.y))).toBeLessThanOrEqual(-40)
-    expect(luma(at(built, slot.x, slot.y)) - luma(at(built, slot.x, slot.y - 6))).toBeLessThanOrEqual(-40)
+    const sat = (c: number): number => Math.max((c >>> 16) & 0xff, (c >>> 8) & 0xff, c & 0xff) - Math.min((c >>> 16) & 0xff, (c >>> 8) & 0xff, c & 0xff)
+    const lower = (s: Uint32Array): number => at(s, slot.x, slot.y + 1)
+    expect(luma(lower(unbuilt)) - luma(lower(built))).toBeGreaterThanOrEqual(25)
+    expect(sat(lower(built)) - sat(lower(unbuilt))).toBeGreaterThanOrEqual(40)
   })
-  test('gives a built brick a darker mortar line at the bottom and right', () => {
+  test('gives a built brick a light top row and a darker mortar edge on the right', () => {
     const built = drawScene(world({ bricks: 1 }), anim())
-    expect(luma(at(built, 42, 29))).toBeLessThan(luma(at(built, 42, 28)))
-    expect(luma(at(built, 45, 28))).toBeLessThan(luma(at(built, 42, 28)))
+    expect(luma(at(built, 42, 28))).toBeGreaterThan(luma(at(built, 42, 29)))
+    expect(luma(at(built, 45, 29))).toBeLessThan(luma(at(built, 42, 29)))
   })
-  test('draws unbuilt slots as a faint dotted outline', () => {
+  test('draws unbuilt slots as a soft visible fill, not outline dots', () => {
     const slot = WONDERS[0]!.slots[1]!
     const scene = drawScene(world({ bricks: 0 }), anim())
-    let tinted = 0
-    for (let dy = 0; dy < 2; dy += 1) for (let dx = 0; dx < 4; dx += 1) if (at(scene, slot.x + dx, slot.y + dy) !== skyAt(slot.y + dy)) tinted += 1
-    expect(tinted).toBeGreaterThan(0)
-    expect(tinted).toBeLessThan(8)
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 4; dx += 1) {
+        const shown = luma(skyAt(slot.y + dy)) - luma(at(scene, slot.x + dx, slot.y + dy))
+        expect(shown, `${dx},${dy}`).toBeGreaterThan(5)
+        expect(shown, `${dx},${dy}`).toBeLessThan(40)
+      }
+    }
   })
   test('draws a dark zig-zag crack of at least 4 px and a red tint on a cracked brick', () => {
     const plain = drawScene(world({ bricks: 1 }), anim())
@@ -95,11 +100,24 @@ describe('drawScene', () => {
   test('floats a readable Z over a sleeping worker and nothing over a busy one', () => {
     const lit = (scene: Uint32Array): number => {
       let count = 0
-      for (let y = 8; y < 17; y += 1) for (let x = 11; x < 23; x += 1) if (at(scene, x, y) !== skyAt(y)) count += 1
+      for (let y = 8; y < 17; y += 1) for (let x = 11; x < 34; x += 1) if (at(scene, x, y) !== skyAt(y)) count += 1
       return count
     }
-    expect(lit(drawScene(world(), anim()))).toBeGreaterThanOrEqual(8)
-    expect(lit(drawScene(world({}, { analyst: 'working' }), anim()))).toBe(0)
+    expect(lit(drawScene(world(), anim()))).toBeGreaterThanOrEqual(12)
+    expect(lit(drawScene(world({}, { analyst: 'working', implementer: 'working', reviewer: 'working' }), anim()))).toBe(0)
+  })
+  test('keeps the Zs within 10 px above a sleeper, also in a tall scene', () => {
+    for (const rows of [18, 30, 40]) {
+      const { dy } = frameFor(rows)
+      const scene = drawScene(world({}, { implementer: 'working', reviewer: 'working' }), anim({ tick: 6 }), rows)
+      const topY = 18 + dy
+      const lit: number[] = []
+      for (let y = Math.max(0, topY - 40); y < topY + 3; y += 1) for (let x = 11; x < 23; x += 1) {
+        if (at(scene, x, y) !== skyAt(y, frameFor(rows).ground) && y < topY) lit.push(y)
+      }
+      expect(lit.length, `rows ${rows}`).toBeGreaterThan(0)
+      expect(Math.min(...lit), `rows ${rows}`).toBeGreaterThanOrEqual(topY - 10)
+    }
   })
   test('fades the Z toward the sky as it rises', () => {
     const whites = (tick: number): number => drawScene(world(), anim({ tick })).filter(color => color === 0xffffff).length
