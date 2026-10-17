@@ -2,7 +2,7 @@ import type { PyramidWorkerName, PyramidWorld } from '../types'
 import {
   BOSS, BOSS_X, BOSS_Y, BRICK_H, BRICK_W, CAMEL, CAMEL_H, CLOUD_START, CLOUDS, DROPPED_BRICK, GROUND, H, HAND, LEGS_A, LEGS_B,
   PALETTE, QMARK, SCROLL, SIT, SPARK, UP_CARRY, UP_EMPTY, W, WHIP, WORKER_H, WORKER_HOME, WORKER_NAMES, WORKER_SHIRT,
-  ZED, wonderAt,
+  ZED_LARGE, ZED_SMALL, wonderAt,
 } from './sprites'
 import type { Palette, Sprite } from './sprites'
 
@@ -134,6 +134,21 @@ function drawCaravan(pixels: Uint32Array, anim: Anim): void {
   if (phase === 'hand') sprite(pixels, SCROLL, SCROLL_AT.x, SCROLL_AT.y, PALETTE)
 }
 
+const ZED_CYCLE = 48
+
+// Two Zs of different sizes rise from the sleeper's head, half a cycle apart, and fade toward the sky colour.
+function drawZeds(pixels: Uint32Array, x: number, top: number, tick: number): void {
+  const zeds = [
+    { rows: ZED_SMALL, age: tick % ZED_CYCLE, dx: 5 },
+    { rows: ZED_LARGE, age: (tick + ZED_CYCLE / 2) % ZED_CYCLE, dx: 8 },
+  ] as const
+  for (const zed of zeds) {
+    const y = top - 1 - Math.floor(zed.age / 4) - zed.rows.length
+    const color = mix(0xffffff, skyAt(y), (zed.age / ZED_CYCLE) * 0.85)
+    sprite(pixels, zed.rows, x + zed.dx + Math.floor(zed.age / 16), y, { W: color })
+  }
+}
+
 function drawWorkers(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void {
   const top = GROUND - WORKER_H
   for (const name of WORKER_NAMES) {
@@ -142,8 +157,7 @@ function drawWorkers(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void
     const palette: Palette = { ...PALETTE, ...WORKER_SHIRT[name] }
     if (state === 'idle' && walker.x <= WORKER_HOME[name]) {
       sprite(pixels, SIT, walker.x, top, palette)
-      const beat = Math.floor(anim.tick / 8)
-      if (beat % 6 < 4) sprite(pixels, ZED, walker.x + 4, 14 - (beat % 4), { W: 0xffffff })
+      drawZeds(pixels, walker.x, top, anim.tick)
       continue
     }
     const isStill = state === 'blocked' || state === 'waiting'

@@ -54,6 +54,20 @@ describe('drawScene', () => {
   test('seats an idle worker at home', () => {
     expect(at(drawScene(world(), anim()), 13, 21)).toBe(PALETTE.Y!)
   })
+  test('floats a readable Z over a sleeping worker and nothing over a busy one', () => {
+    const lit = (scene: Uint32Array): number => {
+      let count = 0
+      for (let y = 8; y < 17; y += 1) for (let x = 11; x < 23; x += 1) if (at(scene, x, y) !== skyAt(y)) count += 1
+      return count
+    }
+    expect(lit(drawScene(world(), anim()))).toBeGreaterThanOrEqual(8)
+    expect(lit(drawScene(world({}, { analyst: 'working' }), anim()))).toBe(0)
+  })
+  test('fades the Z toward the sky as it rises', () => {
+    const whites = (tick: number): number => drawScene(world(), anim({ tick })).filter(color => color === 0xffffff).length
+    // a fresh Z is pure white (clouds sit elsewhere but are white too, so compare counts)
+    expect(whites(0)).toBeGreaterThan(whites(40))
+  })
   test('draws a blocked worker with a dropped brick', () => {
     const scene = drawScene(world({}, { reviewer: 'blocked' }), anim())
     expect(at(scene, 25 + 7, 28)).toBe(PALETTE.R!)

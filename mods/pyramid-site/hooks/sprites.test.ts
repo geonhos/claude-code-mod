@@ -2,11 +2,11 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   BOSS, BRICK_H, BRICK_W, CAMEL, CLOUDS, DROPPED_BRICK, LEGS_A, LEGS_B, PALETTE, QMARK, SCROLL, SIT,
-  UP_CARRY, UP_EMPTY, WONDERS, WORKER_H, WORKER_SHIRT, WORKER_W, ZED, toHexColor, walkTarget,
+  UP_CARRY, UP_EMPTY, WONDERS, WORKER_H, WORKER_SHIRT, WORKER_W, ZED_LARGE, ZED_SMALL, toHexColor, walkTarget,
 } from './sprites'
 import type { Palette, Sprite } from './sprites'
 
-const SPRITES: Record<string, Sprite> = { BOSS, CAMEL, DROPPED_BRICK, LEGS_A, LEGS_B, QMARK, SCROLL, SIT, UP_CARRY, UP_EMPTY, ZED }
+const SPRITES: Record<string, Sprite> = { BOSS, CAMEL, DROPPED_BRICK, LEGS_A, LEGS_B, QMARK, SCROLL, SIT, UP_CARRY, UP_EMPTY, ZED_LARGE, ZED_SMALL }
 const WORKER_PALETTE: Palette = { ...PALETTE, ...WORKER_SHIRT.analyst }
 
 describe('sprites', () => {
