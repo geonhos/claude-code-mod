@@ -7,6 +7,11 @@
       "name": "kaomoji-status",
       "source": "./mods/kaomoji-status",
       "description": "Dancing kaomoji above the prompt, one per harness worker."
+    },
+    {
+      "name": "pyramid-site",
+      "source": "./mods/pyramid-site",
+      "description": "A pixel-art pyramid construction site in a side pane, built one brick per harness report."
     }
   ]
 }

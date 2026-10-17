@@ -1,0 +1,22 @@
+{
+  "name": "pyramid-site",
+  "version": "0.1.0",
+  "description": "An animated pixel-art pyramid construction site in a side pane: the harness conductor cracks the whip, workers carry bricks, every report adds one.",
+  "author": { "name": "geonhos" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "harnessPath": {
+      "type": "string",
+      "title": "harness path",
+      "description": "Absolute path to the harness executable. Leave empty to run `harness` from PATH.",
+      "default": ""
+    },
+    "pixelMode": {
+      "type": "string",
+      "title": "pixel mode",
+      "description": "half draws two pixels per cell with ▀; space draws coloured spaces, for terminals that show block glyphs double width.",
+      "options": ["half", "space"],
+      "default": "half"
+    }
+  }
+}

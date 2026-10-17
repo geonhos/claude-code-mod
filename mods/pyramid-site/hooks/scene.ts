@@ -1,0 +1,235 @@
+import type { PyramidWorkerName, PyramidWorld } from '../types'
+import {
+  BOSS, BOSS_X, BOSS_Y, BRICK_H, BRICK_W, CAMEL, CAMEL_H, CLOUD_START, CLOUDS, DROPPED_BRICK, GROUND, H, HAND, LEGS_A, LEGS_B,
+  PALETTE, QMARK, SCROLL, SIT, SPARK, UP_CARRY, UP_EMPTY, W, WHIP, WORKER_H, WORKER_HOME, WORKER_NAMES, WORKER_SHIRT,
+  ZED_LARGE, ZED_SMALL, wonderAt,
+} from './sprites'
+import type { Palette, Sprite } from './sprites'
+
+export type WorkerAnim = { x: number; dir: 1 | -1; carry: boolean; step: number }
+export type CaravanPhase = 'none' | 'in' | 'hand' | 'out'
+export type Caravan = { phase: CaravanPhase; x: number; hold: number; queued: boolean }
+export type Anim = {
+  tick: number
+  whip: number
+  flash: number
+  flashSlot: number
+  gold: number
+  done: { wonderIndex: number; ticks: number } | undefined
+  workers: Record<PyramidWorkerName, WorkerAnim>
+  caravan: Caravan
+  clouds: number[]
+}
+
+export const SKY_TOP = 0x5fa8e0
+export const SKY_BOTTOM = 0xc4e6f3
+export const CRACK = 0x3a1608
+const BRICK_FACE = 0xc9944f
+const BRICK_TOP = 0xdcae68
+const BRICK_MORTAR = 0x8f6232
+const CRACKED_FACE = 0xd8482e
+const CRACKED_MORTAR = 0x80301f
+export const SCROLL_AT = { x: BOSS_X + 2, y: BOSS_Y - 3 } as const
+
+export function mix(a: number, b: number, t: number): number {
+  let out = 0
+  for (const shift of [16, 8, 0]) {
+    const from = (a >>> shift) & 0xff
+    const to = (b >>> shift) & 0xff
+    out |= Math.round(from + (to - from) * t) << shift
+  }
+  return out >>> 0
+}
+
+export const skyAt = (y: number, ground = GROUND): number => mix(SKY_TOP, SKY_BOTTOM, Math.min(1, y / (ground - 1)))
+
+// The sprites and wonders are laid out for the 72×36 base scene. A taller scene adds sky above them (dy rows) and a
+// deeper ground band below, so everything keeps standing on the ground line that sits `H - GROUND` rows plus the
+// extra ground from the bottom. `put` shifts base coordinates by dy.
+type Frame = { dy: number; h: number; ground: number }
+let frame: Frame = { dy: 0, h: H, ground: GROUND }
+
+export function frameFor(rows: number): Frame {
+  const extra = Math.max(0, Math.round(rows) * 2 - H)
+  const deeper = Math.floor(extra / 3)
+  const dy = extra - deeper
+  return { dy, h: H + extra, ground: GROUND + dy }
+}
+const skyY = (y: number): number => skyAt(y + frame.dy, frame.ground)
+
+const hash = (x: number, y: number): number => (Math.imul(x + 1, 73856093) ^ Math.imul(y + 7, 19349663)) >>> 0
+
+function put(pixels: Uint32Array, x: number, y: number, color: number): void {
+  const px = Math.floor(x)
+  const py = Math.floor(y) + frame.dy
+  if (px >= 0 && px < W && py >= 0 && py < frame.h) pixels[py * W + px] = color
+}
+
+function sprite(pixels: Uint32Array, rows: Sprite, x: number, y: number, palette: Palette, flip = false): void {
+  const width = rows[0]?.length ?? 0
+  rows.forEach((row, r) => {
+    for (let i = 0; i < width; i += 1) {
+      const glyph = row[flip ? width - 1 - i : i] ?? '.'
+      if (glyph === '.') continue
+      const color = palette[glyph]
+      if (color !== undefined) put(pixels, x + i, y + r, color)
+    }
+  })
+}
+
+const sandAt = (x: number, y: number, ground: number): number => {
+  const h = hash(x, y)
+  if (y === ground) return 0xe3c486
+  if (y < ground + 6) return h % 7 === 0 ? 0xc4a161 : h % 11 === 0 ? 0xe6cc92 : 0xd6b574
+  // deeper strata: darker with depth, in bands, with a few buried stones
+  const depth = y - ground - 6
+  const band = Math.floor(depth / 4) % 2 === 0 ? 0 : 0.08
+  const base = mix(0xd6b574, 0x8a6a3c, Math.min(1, depth / 24) * 0.7 + band)
+  return h % 9 === 0 ? mix(base, 0x5a4326, 0.3) : h % 13 === 0 ? mix(base, 0xf0dca0, 0.2) : base
+}
+
+function drawBuriedStones(pixels: Uint32Array, ground: number, h: number): void {
+  for (let y = ground + 8; y < h; y += 1) {
+    for (let x = 0; x < W - 2; x += 1) {
+      const key = hash(x * 3, y * 5)
+      if (key % 61 !== 0) continue
+      const color = key % 2 === 0 ? 0x9a948a : 0x7d776d
+      pixels[y * W + x] = color
+      pixels[y * W + x + 1] = color
+      if (y + 1 < h) pixels[(y + 1) * W + x] = 0x6a645a
+    }
+  }
+}
+
+function drawBackdrop(pixels: Uint32Array, anim: Anim): void {
+  const { h, ground, dy } = frame
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < W; x += 1) pixels[y * W + x] = y < ground ? skyAt(y, ground) : sandAt(x, y, ground)
+  }
+  drawBuriedStones(pixels, ground, h)
+  // sun and clouds hug the top of the pane whatever its height
+  frame = { ...frame, dy: 0 }
+  for (let y = 2; y < 7; y += 1) {
+    for (let x = 27; x < 32; x += 1) {
+      const edge = y === 2 || y === 6 || x === 27 || x === 31
+      put(pixels, x, y, edge ? 0xf6d54a : 0xfff1a8)
+    }
+  }
+  anim.clouds.forEach((cx, i) => {
+    const start = CLOUD_START[i]
+    if (start !== undefined) sprite(pixels, CLOUDS[start.p]!, Math.round(cx), start.y, { W: 0xffffff })
+  })
+  // a taller sky gets more clouds, drifting with the same animation
+  const spare = Math.min(3, Math.floor(dy / 7))
+  for (let i = 0; i < spare; i += 1) {
+    const cx = anim.clouds[i % Math.max(1, anim.clouds.length)] ?? 0
+    const x = (((Math.round(cx) + 37 + i * 23) % 90) + 90) % 90 - 12
+    sprite(pixels, CLOUDS[i % 2]!, x, 11 + i * 7, { W: 0xffffff })
+  }
+  frame = { ...frame, dy }
+  for (let x = 0; x < W; x += 1) {
+    const dune = Math.max(1, Math.round(2.2 + 1.3 * Math.sin(x * 0.17) + 0.9 * Math.sin(x * 0.06 + 2)))
+    for (let y = GROUND - dune; y < GROUND; y += 1) put(pixels, x, y, y === GROUND - dune ? 0xefd9a6 : 0xe3c88f)
+  }
+}
+
+function drawWonder(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void {
+  const index = anim.done?.wonderIndex ?? world.progress.wonderIndex
+  const wonder = wonderAt(index)
+  const bricks = anim.done !== undefined ? wonder.slots.length : world.progress.bricks
+  const cracked = anim.done !== undefined ? [] : world.progress.cracked
+  const last = wonder.slots.length - 1
+  wonder.slots.forEach((slot, i) => {
+    for (let dy = 0; dy < BRICK_H; dy += 1) {
+      for (let dx = 0; dx < BRICK_W; dx += 1) {
+        let color: number
+        if (i >= bricks) {
+          // a soft sand-tinted silhouette so the whole wonder shape can be read before it is built
+          color = mix(skyY(slot.y + dy), 0xd6b574, 0.24)
+        } else if (anim.done !== undefined && i === last) {
+          color = dy === 0 && dx < 3 ? 0xffe27a : 0xe9b949
+        } else if (anim.gold > 0) {
+          color = dy === 0 ? 0xffe27a : 0xe9b949
+        } else if (anim.flash > 0 && i === anim.flashSlot) {
+          color = anim.flash % 2 === 1 ? 0xfff6d6 : 0xf2dfa8
+        } else {
+          const isMortar = dx === BRICK_W - 1
+          const isCracked = cracked.includes(i)
+          color = isCracked ? (isMortar ? CRACKED_MORTAR : CRACKED_FACE) : isMortar ? BRICK_MORTAR : dy === 0 ? BRICK_TOP : BRICK_FACE
+        }
+        put(pixels, slot.x + dx, slot.y + dy, color)
+      }
+    }
+    if (i < bricks && cracked.includes(i) && anim.done === undefined) {
+      // a dark zig-zag across the whole brick, whatever flash is running
+      for (const [dx, dy] of [[0, 1], [1, 0], [2, 1], [3, 0]] as const) put(pixels, slot.x + dx, slot.y + dy, CRACK)
+    }
+  })
+}
+
+function drawOverseer(pixels: Uint32Array, anim: Anim): void {
+  sprite(pixels, BOSS, BOSS_X, BOSS_Y, PALETTE)
+  const phase = anim.whip > 6 ? 'raise' : anim.whip > 2 ? 'crack' : 'rest'
+  for (const [dx, dy] of WHIP[phase]) put(pixels, HAND.x + dx, HAND.y + dy, PALETTE.N!)
+  if (phase === 'crack' && anim.whip % 2 === 1) {
+    for (const [dx, dy, color] of SPARK) put(pixels, HAND.x + dx, HAND.y + dy, color)
+  }
+}
+
+function drawCaravan(pixels: Uint32Array, anim: Anim): void {
+  const { phase, x } = anim.caravan
+  if (phase === 'none') return
+  const top = GROUND - CAMEL_H
+  sprite(pixels, CAMEL, x, top, PALETTE, phase === 'out')
+  if (phase === 'in') sprite(pixels, SCROLL, x + 6, top, PALETTE)
+  if (phase === 'hand') sprite(pixels, SCROLL, SCROLL_AT.x, SCROLL_AT.y, PALETTE)
+}
+
+const ZED_CYCLE = 48
+
+// Two small Zs rise a few pixels from just above the sleeper's hat, half a cycle apart, fading toward the sky colour.
+function drawZeds(pixels: Uint32Array, x: number, top: number, tick: number): void {
+  const hat = top + 3
+  const zeds = [
+    { rows: ZED_SMALL, age: tick % ZED_CYCLE, dx: 4 },
+    { rows: ZED_LARGE, age: (tick + ZED_CYCLE / 2) % ZED_CYCLE, dx: 7 },
+  ] as const
+  for (const zed of zeds) {
+    const y = hat - 2 - zed.rows.length - Math.floor(zed.age / 12)
+    const color = mix(0xffffff, skyY(y), (zed.age / ZED_CYCLE) * 0.8)
+    sprite(pixels, zed.rows, x + zed.dx + Math.floor(zed.age / 24), y, { W: color })
+  }
+}
+
+function drawWorkers(pixels: Uint32Array, world: PyramidWorld, anim: Anim): void {
+  const top = GROUND - WORKER_H
+  for (const name of WORKER_NAMES) {
+    const state = world.workers[name]
+    const walker = anim.workers[name]
+    const palette: Palette = { ...PALETTE, ...WORKER_SHIRT[name] }
+    if (state === 'idle' && walker.x <= WORKER_HOME[name]) {
+      sprite(pixels, SIT, walker.x, top, palette)
+      drawZeds(pixels, walker.x, top, anim.tick)
+      continue
+    }
+    const isStill = state === 'blocked' || state === 'waiting'
+    const upper = walker.carry && !isStill ? UP_CARRY : UP_EMPTY
+    const legs = isStill ? LEGS_B : walker.step % 2 === 1 ? LEGS_A : LEGS_B
+    sprite(pixels, upper.concat(legs), walker.x, top, palette, walker.dir < 0)
+    if (state === 'blocked') {
+      sprite(pixels, DROPPED_BRICK, walker.x + 7, GROUND - 2, PALETTE)
+      if (Math.floor(anim.tick / 5) % 2 === 1) sprite(pixels, QMARK, walker.x + 2, top - 6, PALETTE)
+    }
+  }
+}
+
+export function drawScene(world: PyramidWorld, anim: Anim, rows = H / 2): Uint32Array {
+  frame = frameFor(rows)
+  const pixels = new Uint32Array(W * frame.h)
+  drawBackdrop(pixels, anim)
+  drawWonder(pixels, world, anim)
+  drawOverseer(pixels, anim)
+  drawCaravan(pixels, anim)
+  drawWorkers(pixels, world, anim)
+  return pixels
+}
